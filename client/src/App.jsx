@@ -19,12 +19,14 @@ import { Searching } from './components/Searching.jsx';
 import { Chat } from './components/Chat.jsx';
 import { SettingsModal } from './components/SettingsModal.jsx';
 import { Confessions } from './components/Confessions.jsx';
+import { Admin } from './components/Admin.jsx';
 import { ConnectionBanner, ReplacedScreen, Toasts } from './components/Feedback.jsx';
 
 const PROFILE_KEY = 'noone.profile';
 
 // Энгийн замчлал: "/" — чат, "/hana" — нууц хана, "/hana/<id>" — тодорхой confession
 function parseRoute(pathname) {
+  if (/^\/admin\/?$/.test(pathname)) return { view: 'admin', id: null };
   const m = pathname.match(/^\/hana(?:\/(cf_[a-f0-9]{12}))?\/?$/);
   return m ? { view: 'wall', id: m[1] || null } : { view: 'home', id: null };
 }
@@ -108,7 +110,7 @@ export default function App() {
 
   // Хүн олдмогц нууц ханаас чат руу шилжинэ
   useEffect(() => {
-    if (state.phase === 'chatting' && route.view === 'wall') navigate('/', { replace: true });
+    if (state.phase === 'chatting' && route.view !== 'home') navigate('/', { replace: true });
   }, [state.phase, route.view, navigate]);
 
   // Таб-ын гарчигт уншаагүй тоо
@@ -180,7 +182,9 @@ export default function App() {
   if (state.replaced) return <ReplacedScreen onRestart={actions.restartFresh} />;
 
   let screen;
-  if (route.view === 'wall' && state.phase !== 'chatting') {
+  if (route.view === 'admin') {
+    screen = <Admin onExit={() => navigate('/hana')} onToast={pushToast} />;
+  } else if (route.view === 'wall' && state.phase !== 'chatting') {
     screen = (
       <Confessions
         focusId={route.id}

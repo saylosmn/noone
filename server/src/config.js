@@ -54,6 +54,8 @@ export function loadConfig(overrides = {}) {
       retentionDays: int(env.CONFESSION_RETENTION_DAYS, 30),
       topWindowDays: int(env.CONFESSION_TOP_DAYS, 7),
       hideReports: int(env.CONFESSION_HIDE_REPORTS, 3),
+      // auto | manual (анхны утга — дараа нь админ хуудаснаас солино)
+      moderation: env.CONFESSION_MODERATION || 'auto',
       postBurst: int(env.CONFESSION_POST_BURST, 3),
       postIntervalSec: int(env.CONFESSION_POST_INTERVAL_SEC, 300),
       saveDelayMs: int(env.CONFESSION_SAVE_DELAY_MS, 5000),

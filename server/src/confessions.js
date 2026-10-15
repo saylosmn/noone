@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { KeyedLimiter } from './limiter.js';
 import { CONFESSION_REPORT_REASONS, CONFESSION_TAGS, SCHOOLS } from './constants.js';
@@ -38,6 +38,9 @@ export function createConfessions({ config, kv }) {
   let dirty = false;
   let saveTimer = null;
   let saving = Promise.resolve();
+  // Хяналтын тохиргоо: auto — шууд нийтэлнэ, manual — админ зөвшөөрсний дараа л харагдана
+  const settings = { moderation: c.moderation === 'manual' ? 'manual' : 'auto' };
+  const bans = new Map(); // 'd:<hash>' | 'i:<hash>' -> { until, at, reason }
 
   const hash = (kind, value) =>
     createHash('sha256').update(`${config.reportHashSalt}|${kind}|${value}`).digest('hex').slice(0, 16);
@@ -49,11 +52,27 @@ export function createConfessions({ config, kv }) {
     likeIp: new KeyedLimiter({ capacity: 400, refillPerSec: 400 / 3600 }),
     report: new KeyedLimiter({ capacity: 10, refillPerSec: 10 / 3600 }),
     read: new KeyedLimiter({ capacity: 120, refillPerSec: 2 }),
+    adminFail: new KeyedLimiter({ capacity: 10, refillPerSec: 10 / 900 }),
   };
+
+  // Харагдах эсэх: нуугдаагүй, хянагдаж буй биш
+  const isPublic = (it) => !it.hidden && !it.pending;
+
+  function banUntil(v) {
+    const now = Date.now();
+    let until = 0;
+    for (const key of [v.device && `d:${v.device}`, `i:${v.ip}`]) {
+      const b = key && bans.get(key);
+      if (b && b.until > now) until = Math.max(until, b.until);
+    }
+    return until;
+  }
 
   // ---------- Хадгалалт ----------
   const serialize = () => ({
     v: 1,
+    settings,
+    bans: [...bans.entries()],
     items: [...items.values()].map((it) => ({
       ...it,
       likers: [...it.likers],
@@ -64,6 +83,10 @@ export function createConfessions({ config, kv }) {
   async function load() {
     try {
       const data = await kv.get(STORE_KEY);
+      if (data?.settings?.moderation === 'manual' || data?.settings?.moderation === 'auto') {
+        settings.moderation = data.settings.moderation;
+      }
+      for (const [key, b] of data?.bans || []) if (b?.until > Date.now()) bans.set(key, b);
       for (const raw of data?.items || []) {
         if (!ID_RE.test(raw.id)) continue;
         items.set(raw.id, { ...raw, likers: new Set(raw.likers || []), reporters: new Set(raw.reporters || []) });
@@ -106,6 +129,7 @@ export function createConfessions({ config, kv }) {
     for (const [id, it] of items) if (it.ts < cutoff) items.delete(id);
     while (items.size > c.maxItems) items.delete(items.keys().next().value);
     for (const [h, ts] of recentHashes) if (Date.now() - ts > DAY) recentHashes.delete(h);
+    for (const [key, b] of bans) if (b.until <= Date.now()) bans.delete(key);
   }
   const pruneTimer = setInterval(() => {
     const before = items.size;
@@ -136,6 +160,7 @@ export function createConfessions({ config, kv }) {
     likes: it.likers.size,
     liked: v.device ? it.likers.has(v.device) : false,
     mine: v.device ? it.author === v.device : false,
+    pending: !!it.pending,
   });
 
   const fail = (res, status, error, extra = {}) => res.status(status).json({ ok: false, error, ...extra });
@@ -166,7 +191,7 @@ export function createConfessions({ config, kv }) {
     const school = SCHOOLS.includes(req.query.school) ? req.query.school : null;
     const offset = Math.min(Math.max(Number.parseInt(req.query.offset, 10) || 0, 0), 2000);
 
-    let list = [...items.values()].filter((it) => !it.hidden && (!tag || it.tag === tag) && matchesSchool(it.school, school));
+    let list = [...items.values()].filter((it) => (isPublic(it) || (it.pending && !it.hidden && v.device && it.author === v.device)) && (!tag || it.tag === tag) && matchesSchool(it.school, school));
     if (sort === 'top') {
       const since = Date.now() - c.topWindowDays * DAY;
       list = list.filter((it) => it.ts >= since).sort((a, b) => b.likers.size - a.likers.size || b.ts - a.ts);
@@ -184,8 +209,9 @@ export function createConfessions({ config, kv }) {
 
   router.get('/:id', (req, res) => {
     const it = items.get(req.params.id);
-    if (!it || it.hidden) return fail(res, 404, 'not_found');
-    res.json({ ok: true, item: toPublic(it, viewer(req)) });
+    const v = viewer(req);
+    if (!it || it.hidden || (it.pending && it.author !== v.device)) return fail(res, 404, 'not_found');
+    res.json({ ok: true, item: toPublic(it, v) });
   });
 
   router.post('/', (req, res) => {
@@ -193,6 +219,8 @@ export function createConfessions({ config, kv }) {
     if (!v.device) return fail(res, 400, 'no_device');
     const body = req.body || {};
     if (body.adultConfirmed !== true) return fail(res, 400, 'adult_confirmation_required');
+    const banned = banUntil(v);
+    if (banned) return fail(res, 403, 'banned', { until: banned });
 
     const clean = sanitizeText(body.text, c.maxLength);
     if (clean.error) return fail(res, 400, clean.error);
@@ -224,6 +252,7 @@ export function createConfessions({ config, kv }) {
       likers: new Set(),
       reporters: new Set(),
       hidden: false,
+      pending: settings.moderation === 'manual',
     };
     items.set(item.id, item);
     recentHashes.set(textHash, item.ts);
@@ -236,7 +265,7 @@ export function createConfessions({ config, kv }) {
     const v = viewer(req);
     if (!v.device) return fail(res, 400, 'no_device');
     const it = items.get(req.params.id);
-    if (!it || it.hidden) return fail(res, 404, 'not_found');
+    if (!it || !isPublic(it)) return fail(res, 404, 'not_found');
     for (const [limiter, key] of [
       [limits.like, v.device],
       [limits.likeIp, v.ip],
@@ -268,7 +297,15 @@ export function createConfessions({ config, kv }) {
       it.reasons = { ...(it.reasons || {}), [reason]: (it.reasons?.[reason] || 0) + 1 };
       // Хувийн мэдээлэл, насанд хүрээгүй гэсэн мэдээлэл хурдан нуугдана
       const threshold = reason === 'personal_info' || reason === 'minor' ? Math.max(1, c.hideReports - 1) : c.hideReports;
-      if (it.reporters.size >= threshold) it.hidden = true;
+      if (it.reporters.size >= threshold && !it.approved) {
+        it.hidden = true;
+        it.hiddenBy = 'reports';
+      }
+      // Админ зөвшөөрсөн байсан ч олон мэдээлэл ирвэл дахин нууна
+      if (it.approved && it.reporters.size >= threshold * 2) {
+        it.hidden = true;
+        it.hiddenBy = 'reports';
+      }
       scheduleSave();
     }
     res.json({ ok: true, hidden: it.hidden });
@@ -290,40 +327,148 @@ export function createConfessions({ config, kv }) {
   router.use((err, req, res, next) => fail(res, err.status === 413 ? 413 : 400, err.status === 413 ? 'too_long' : 'invalid'));
 
   // ---------- Админ ----------
+  const safeEqual = (a, b) => {
+    const x = Buffer.from(String(a));
+    const y = Buffer.from(String(b));
+    return x.length === y.length && timingSafeEqual(x, y);
+  };
   const admin = express.Router();
-  admin.use(express.json({ limit: '1kb' }));
+  admin.use(express.json({ limit: '2kb' }));
   admin.use((req, res, next) => {
-    if (!config.adminToken || req.get('authorization') !== `Bearer ${config.adminToken}`) return res.sendStatus(404);
-    next();
+    const ipKey = hash('ip', clientIp(req));
+    const auth = req.get('authorization') || '';
+    if (config.adminToken && safeEqual(auth, `Bearer ${config.adminToken}`)) return next();
+    // Нууц үг таахаас сэргийлж буруу оролдлогыг хязгаарлана
+    const r = limits.adminFail.take(ipKey);
+    if (!r.ok) return limited(res, r);
+    return res.sendStatus(404);
   });
+
+  const adminItem = (it) => ({
+    id: it.id,
+    text: it.text,
+    tag: it.tag,
+    school: it.school || null,
+    ts: it.ts,
+    likes: it.likers.size,
+    reports: it.reporters.size,
+    reasons: it.reasons || {},
+    hidden: !!it.hidden,
+    hiddenBy: it.hidden ? it.hiddenBy || 'admin' : null,
+    pending: !!it.pending,
+    approved: !!it.approved,
+    author: it.author ? it.author.slice(0, 6) : null,
+    authorPosts: [...items.values()].filter((x) => x.author === it.author).length,
+    authorBanned: bans.has(`d:${it.author}`) && bans.get(`d:${it.author}`).until > Date.now(),
+  });
+
+  const adminStats = () => {
+    const all = [...items.values()];
+    return {
+      total: all.length,
+      public: all.filter(isPublic).length,
+      pending: all.filter((it) => it.pending && !it.hidden).length,
+      reported: all.filter((it) => it.reporters.size > 0 && !it.hidden && !it.approved).length,
+      hidden: all.filter((it) => it.hidden).length,
+      bans: [...bans.values()].filter((b) => b.until > Date.now()).length,
+      today: all.filter((it) => Date.now() - it.ts < DAY).length,
+    };
+  };
+
   admin.get('/', (req, res) => {
-    const list = [...items.values()]
-      .sort((a, b) => b.ts - a.ts)
-      .map((it) => ({
-        id: it.id,
-        text: it.text,
-        tag: it.tag,
-        school: it.school,
-        ts: it.ts,
-        likes: it.likers.size,
-        reports: it.reporters.size,
-        reasons: it.reasons || {},
-        hidden: it.hidden,
-        author: it.author,
-      }));
-    res.json({ storage: kv.kind, count: list.length, items: list });
+    const filter = ['reported', 'pending', 'hidden', 'all'].includes(req.query.filter) ? req.query.filter : 'all';
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase().slice(0, 100) : '';
+    let list = [...items.values()];
+    if (filter === 'reported') list = list.filter((it) => it.reporters.size > 0 && !it.hidden && !it.approved);
+    if (filter === 'pending') list = list.filter((it) => it.pending && !it.hidden);
+    if (filter === 'hidden') list = list.filter((it) => it.hidden);
+    if (q) list = list.filter((it) => it.text.toLowerCase().includes(q));
+    list.sort(filter === 'reported' ? (a, b) => b.reporters.size - a.reporters.size || b.ts - a.ts : (a, b) => b.ts - a.ts);
+    res.json({
+      ok: true,
+      storage: kv.kind,
+      settings,
+      stats: adminStats(),
+      count: list.length,
+      items: list.slice(0, 300).map(adminItem),
+    });
   });
-  admin.post('/:id/hide', (req, res) => {
+
+  admin.get('/settings', (req, res) => res.json({ ok: true, settings }));
+  admin.post('/settings', (req, res) => {
+    const m = req.body?.moderation;
+    if (m !== 'auto' && m !== 'manual') return fail(res, 400, 'invalid');
+    settings.moderation = m;
+    scheduleSave();
+    res.json({ ok: true, settings });
+  });
+
+  const withItem = (handler) => (req, res) => {
     const it = items.get(req.params.id);
-    if (!it) return res.sendStatus(404);
-    it.hidden = req.body?.hidden !== false;
+    if (!it) return fail(res, 404, 'not_found');
+    handler(it, req, res);
     scheduleSave();
-    res.json({ ok: true, hidden: it.hidden });
-  });
+    if (!res.headersSent) res.json({ ok: true, item: items.has(it.id) ? adminItem(it) : null, stats: adminStats() });
+  };
+
+  // Нуух / сэргээх (backward compatible: {hidden:false} = сэргээх)
+  admin.post(
+    '/:id/hide',
+    withItem((it, req) => {
+      it.hidden = req.body?.hidden !== false;
+      it.hiddenBy = it.hidden ? 'admin' : null;
+      if (!it.hidden) it.pending = false;
+    }),
+  );
+  // Зөвшөөрөх: нийтэлж, мэдээллийг цэвэрлэнэ
+  admin.post(
+    '/:id/approve',
+    withItem((it) => {
+      it.pending = false;
+      it.hidden = false;
+      it.hiddenBy = null;
+      it.approved = true;
+      it.reporters.clear();
+      it.reasons = {};
+    }),
+  );
   admin.delete('/:id', (req, res) => {
-    if (!items.delete(req.params.id)) return res.sendStatus(404);
+    if (!items.delete(req.params.id)) return fail(res, 404, 'not_found');
     scheduleSave();
-    res.json({ ok: true });
+    res.json({ ok: true, stats: adminStats() });
+  });
+  // Зохиогчийг хориглох: төхөөрөмж + IP, бүх бичлэгийг нь нууна
+  admin.post('/:id/ban', (req, res) => {
+    const it = items.get(req.params.id);
+    if (!it) return fail(res, 404, 'not_found');
+    const days = [1, 7, 30, 365].includes(req.body?.days) ? req.body.days : 7;
+    const ban = { until: Date.now() + days * DAY, at: Date.now(), from: it.id, text: it.text.slice(0, 80) };
+    if (it.author) bans.set(`d:${it.author}`, ban);
+    if (it.authorIp && req.body?.ip !== false) bans.set(`i:${it.authorIp}`, ban);
+    let hiddenCount = 0;
+    for (const x of items.values()) {
+      if (x.author === it.author && !x.hidden) {
+        x.hidden = true;
+        x.hiddenBy = 'admin';
+        hiddenCount += 1;
+      }
+    }
+    scheduleSave();
+    res.json({ ok: true, hiddenCount, until: ban.until, stats: adminStats() });
+  });
+  admin.get('/bans', (req, res) => {
+    const now = Date.now();
+    res.json({
+      ok: true,
+      bans: [...bans.entries()]
+        .filter(([, b]) => b.until > now)
+        .map(([key, b]) => ({ key, kind: key[0] === 'd' ? 'device' : 'ip', until: b.until, at: b.at, text: b.text || '' })),
+    });
+  });
+  admin.delete('/bans/:key', (req, res) => {
+    if (!bans.delete(req.params.key)) return fail(res, 404, 'not_found');
+    scheduleSave();
+    res.json({ ok: true, stats: adminStats() });
   });
 
   return {
@@ -339,6 +484,6 @@ export function createConfessions({ config, kv }) {
       saveTimer = null;
       await flush();
     },
-    _internal: { items, recentHashes, limits },
+    _internal: { items, recentHashes, limits, bans, settings },
   };
 }

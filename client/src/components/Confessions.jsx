@@ -65,12 +65,14 @@ function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }
         </span>
         {item.school && <span className="cf-school">{schoolLabel(item.school)}</span>}
         {item.mine && <span className="cf-mine">Таных</span>}
+        {item.pending && <span className="cf-pending">⏳ Хянагдаж байна</span>}
         <span className="cf-time">{timeAgo(item.ts)}</span>
       </div>
       <p className="cf-text">{item.text}</p>
-      <div className="cf-actions">
+      <div className={`cf-actions ${item.pending ? 'is-pending' : ''}`}>
         <button
           type="button"
+          disabled={item.pending}
           className={`cf-like ${item.liked ? 'is-liked' : ''}`}
           aria-pressed={item.liked}
           aria-label={item.liked ? 'Like буцаах' : 'Like дарах'}
@@ -79,7 +81,7 @@ function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }
           <Icon name="heart" size={19} />
           <span>{item.likes || ''}</span>
         </button>
-        <button type="button" className="cf-action" onClick={() => onShare(item)}>
+        <button type="button" className="cf-action" disabled={item.pending} onClick={() => onShare(item)}>
           <Icon name="share" size={18} />
           <span>Хуваалцах</span>
         </button>
@@ -555,6 +557,10 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
   const onPosted = (item) => {
     if (sort === 'new' && (!tag || tag === item.tag) && (!school || item.school?.startsWith(school))) {
       setItems((list) => [item, ...list]);
+    }
+    if (item.pending) {
+      onToast('Илгээгдлээ. Админ шалгасны дараа бүгдэд харагдана.', 'success');
+      return;
     }
     setShare({ item, justPosted: true });
   };

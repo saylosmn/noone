@@ -21,9 +21,11 @@ after(async () => {
 });
 
 beforeEach(() => {
-  const { items, recentHashes, limits } = server.confessions._internal;
+  const { items, recentHashes, limits, bans, settings } = server.confessions._internal;
   items.clear();
   recentHashes.clear();
+  bans.clear();
+  settings.moderation = 'auto';
   for (const l of Object.values(limits)) l.buckets.clear();
 });
 
@@ -151,6 +153,63 @@ test('админ нууж, устгана', async () => {
   assert.equal(list.count, 1);
   await fetch(`${url}/api/admin/confessions/${id}/hide`, { method: 'POST', headers: auth, body: '{}' });
   assert.equal((await api('')).body.items.length, 0);
+});
+
+const adminApi = async (path, { method = 'GET', body, token = 'secret' } = {}) => {
+  const res = await fetch(`${url}/api/admin/confessions${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+
+test('manual горим: зөвшөөрөхөөс өмнө зөвхөн зохиогчид харагдана', async () => {
+  await adminApi('/settings', { method: 'POST', body: { moderation: 'manual' } });
+  const { body } = await post('Шалгагдах ёстой нууц бичлэг');
+  assert.equal(body.item.pending, true);
+  assert.equal((await api('', { device: devB })).body.items.length, 0);
+  assert.equal((await api('', { device: devA })).body.items[0].pending, true);
+  assert.equal((await api(`/${body.item.id}`, { device: devB })).status, 404);
+
+  const queue = await adminApi('?filter=pending');
+  assert.equal(queue.body.stats.pending, 1);
+  await adminApi(`/${body.item.id}/approve`, { method: 'POST' });
+  const pub = await api('', { device: devB });
+  assert.equal(pub.body.items.length, 1);
+  assert.equal(pub.body.items[0].pending, false);
+});
+
+test('мэдээлэгдсэнийг зөвшөөрвөл мэдээлэл цэвэрлэгдэнэ', async () => {
+  const { body } = await post('Мэдээлэгдэх бичлэг энд байна');
+  const id = body.item.id;
+  await api(`/${id}/report`, { method: 'POST', device: devB, body: { reason: 'spam' } });
+  const reported = await adminApi('?filter=reported');
+  assert.equal(reported.body.items[0].reports, 1);
+  const ok = await adminApi(`/${id}/approve`, { method: 'POST' });
+  assert.equal(ok.body.item.reports, 0);
+  assert.equal((await adminApi('?filter=reported')).body.count, 0);
+});
+
+test('зохиогчийг хориглоход бүх бичлэг нь нуугдаж, дахин бичиж чадахгүй', async () => {
+  const a = (await post('Муу бичлэг нэг энд байна')).body.item;
+  await post('Муу бичлэг хоёр энд байна');
+  const r = await adminApi(`/${a.id}/ban`, { method: 'POST', body: { days: 7, ip: false } });
+  assert.equal(r.body.hiddenCount, 2);
+  assert.equal((await api('')).body.items.length, 0);
+  const again = await post('Дахиад бичих гэж оролдлоо');
+  assert.equal(again.status, 403);
+  assert.equal(again.body.error, 'banned');
+  assert.equal((await post('Өөр хүн бичиж байна шүү', devB)).status, 201);
+
+  const list = await adminApi('/bans');
+  assert.equal(list.body.bans.length, 1);
+  await adminApi(`/bans/${encodeURIComponent(list.body.bans[0].key)}`, { method: 'DELETE' });
+  assert.equal((await post('Хоригоос гарсны дараа бичлээ')).status, 201);
+});
+
+test('админ: буруу токен', async () => {
+  assert.equal((await adminApi('', { token: 'wrong' })).status, 404);
 });
 
 test('хадгалсан өгөгдлөө дахин ачаална', async () => {
