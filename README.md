@@ -15,7 +15,7 @@ noone/
 │   ├── src/chat.js  Matchmaking, чат, reply, typing, skip, block/report, rate limit
 │   └── test/        Socket e2e тестүүд (17)
 ├── render.yaml      Render Blueprint
-└── vercel.json      Vercel тохиргоо
+└── client/vercel.json  Vercel тохиргоо (Root Directory = client)
 ```
 
 ## Боломжууд
@@ -53,8 +53,8 @@ noone/
 
 ### 2. Frontend → Vercel
 
-1. <https://vercel.com/new> → `saylosmn/noone` repo-г **Import**
-2. Root Directory-г **өөрчлөхгүй** (`vercel.json` бүгдийг тохируулсан). **Deploy** дарна.
+1. <https://vercel.com/new> → `saylosmn/noone` repo-г **Import** → `client` дээр **Import single project**
+2. Root Directory = `client`, Preset = Vite (`client/vercel.json` бусдыг тохируулсан). **Deploy** дарна.
 3. Render-ийн хаяг `noone-server.onrender.com`-оос өөр бол: Vercel → Project → Settings → Environment Variables → `VITE_SERVER_URL=https://<таны-render-хаяг>` нэмээд **Redeploy**.
 
 ### 3. CORS
