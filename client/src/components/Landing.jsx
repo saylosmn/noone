@@ -11,7 +11,20 @@ export function OnlinePill({ conn, online }) {
   );
 }
 
-export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettings, installSlot }) {
+export function WallLink({ onClick, variant = 'card' }) {
+  return (
+    <button type="button" className={`wall-link wall-link-${variant}`} onClick={onClick}>
+      <span className="wall-link-emoji" aria-hidden="true">🤫</span>
+      <span className="wall-link-body">
+        <strong>Нууц хана</strong>
+        <span>{variant === 'card' ? 'Бусдын нэргүй нууцыг уншиж, өөрийнхөө нууцыг бич' : 'Хүлээх зуураа бусдын нэргүй нууцыг уншаарай'}</span>
+      </span>
+      <Icon name="chevronDown" size={18} className="wall-link-arrow" />
+    </button>
+  );
+}
+
+export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettings, onOpenWall, installSlot }) {
   const [tried, setTried] = useState(false);
   const toggleInterest = (id) =>
     onProfile({
@@ -37,6 +50,9 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
       <header className="topbar">
         <Logo />
         <div className="topbar-right">
+          <button type="button" className="btn sm ghost topbar-wall" onClick={onOpenWall}>
+            🤫 <span>Нууц хана</span>
+          </button>
           <OnlinePill conn={conn} online={stats.online} />
           <button type="button" className="icon-btn" aria-label="Өнгө солих" title="Өнгө солих" onClick={onOpenSettings}>
             <Icon name="palette" />
@@ -57,6 +73,7 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
           <p className="hero-sub">
             Эсрэг хүйсийн санамсаргүй хүнтэй бодит цагт текстээр чатла. Мессеж хаана ч хадгалагддаггүй.
           </p>
+          <WallLink onClick={onOpenWall} />
         </section>
 
         <section className="card setup-card" aria-label="Чат эхлүүлэх тохиргоо">

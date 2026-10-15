@@ -8,6 +8,8 @@ import { loadConfig } from './config.js';
 import { attachChat } from './chat.js';
 import { createPush } from './push.js';
 import { createReportLog } from './reports.js';
+import { createConfessions } from './confessions.js';
+import { createKv } from './kv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +17,14 @@ export function createApp(overrides = {}) {
   const config = loadConfig(overrides);
   const push = createPush(config);
   const reports = createReportLog({ file: config.reportLogFile, salt: config.reportHashSalt });
+  const confessions = createConfessions({
+    config,
+    kv: createKv({
+      upstashUrl: config.confessions.upstashUrl,
+      upstashToken: config.confessions.upstashToken,
+      file: config.confessions.file,
+    }),
+  });
 
   const isAllowedOrigin = (origin) => {
     if (!origin) return true; // same-origin эсвэл native клиент
@@ -50,8 +60,9 @@ export function createApp(overrides = {}) {
     if (origin && isAllowedOrigin(origin)) {
       res.set({
         'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Noone-Device',
+        'Access-Control-Max-Age': '600',
         Vary: 'Origin',
       });
     }
@@ -86,6 +97,10 @@ export function createApp(overrides = {}) {
     });
   });
 
+  // Нууц хана (confession)
+  app.use('/api/confessions', confessions.router);
+  app.use('/api/admin/confessions', confessions.admin);
+
   // Админ: мэдээллийн жагсаалт (ADMIN_TOKEN тохируулсан үед л)
   app.get('/api/admin/reports', (req, res) => {
     if (!config.adminToken || req.get('authorization') !== `Bearer ${config.adminToken}`) {
@@ -116,6 +131,7 @@ export function createApp(overrides = {}) {
     chat,
     push,
     reports,
+    confessions,
     listen(port = config.port, host) {
       return new Promise((resolve) => {
         httpServer.listen(port, host, () => resolve(httpServer.address()));
@@ -123,6 +139,7 @@ export function createApp(overrides = {}) {
     },
     async close() {
       chat.close();
+      await confessions.close();
       await new Promise((resolve) => io.close(() => resolve()));
     },
   };

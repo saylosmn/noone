@@ -43,6 +43,21 @@ export function loadConfig(overrides = {}) {
       privateKey: env.VAPID_PRIVATE_KEY || '',
       subject: env.VAPID_SUBJECT || 'mailto:admin@example.com',
     },
+    // Нууц хана (confession). Upstash Redis тохируулбал сервер дахин асахад ч хадгалагдана.
+    confessions: {
+      upstashUrl: env.UPSTASH_REDIS_REST_URL || '',
+      upstashToken: env.UPSTASH_REDIS_REST_TOKEN || '',
+      file: env.CONFESSION_FILE || '',
+      minLength: int(env.CONFESSION_MIN_LENGTH, 10),
+      maxLength: int(env.CONFESSION_MAX_LENGTH, 500),
+      maxItems: int(env.CONFESSION_MAX_ITEMS, 2000),
+      retentionDays: int(env.CONFESSION_RETENTION_DAYS, 30),
+      topWindowDays: int(env.CONFESSION_TOP_DAYS, 7),
+      hideReports: int(env.CONFESSION_HIDE_REPORTS, 3),
+      postBurst: int(env.CONFESSION_POST_BURST, 3),
+      postIntervalSec: int(env.CONFESSION_POST_INTERVAL_SEC, 300),
+      saveDelayMs: int(env.CONFESSION_SAVE_DELAY_MS, 5000),
+    },
     limits: {
       connectPerMinute: int(env.LIMIT_CONNECT_PER_MINUTE, 30),
       messageBurst: int(env.LIMIT_MESSAGE_BURST, 10),
@@ -53,6 +68,7 @@ export function loadConfig(overrides = {}) {
     ...base,
     ...overrides,
     vapid: { ...base.vapid, ...(overrides.vapid || {}) },
+    confessions: { ...base.confessions, ...(overrides.confessions || {}) },
     limits: { ...base.limits, ...(overrides.limits || {}) },
   };
 }

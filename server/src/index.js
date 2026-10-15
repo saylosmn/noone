@@ -9,6 +9,9 @@ console.log(`[noone] зөвшөөрсөн frontend: ${server.config.clientOrigin
 console.log(
   `[noone] Web Push: ${server.push.enabled ? (server.push.ephemeral ? 'идэвхтэй (түлхүүр автоматаар үүсгэсэн)' : 'идэвхтэй') : `идэвхгүй (${server.push.reason})`}`,
 );
+console.log(
+  `[noone] Нууц хана: ${server.confessions.storageKind === 'memory' ? 'санах ойд (UPSTASH_REDIS_REST_URL тохируулбал байнга хадгална)' : server.confessions.storageKind}`,
+);
 console.log('[noone] Анхаар: дараалал, өрөө санах ойд л байдаг — сервер дахин асахад арилна.');
 
 // Render автоматаар RENDER_EXTERNAL_URL-ийг тохируулдаг

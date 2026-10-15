@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { interestLabel } from '../lib/constants.js';
 import { formatDuration } from '../lib/format.js';
 import { Icon, Logo } from './Icon.jsx';
-import { OnlinePill } from './Landing.jsx';
+import { OnlinePill, WallLink } from './Landing.jsx';
 import { RatingCard } from './Feedback.jsx';
 
 function useNow(intervalMs = 1000) {
@@ -27,6 +27,7 @@ export function Searching({
   permission,
   onEnableNotifications,
   onOpenSettings,
+  onOpenWall,
 }) {
   const now = useNow();
   const since = search.since || now;
@@ -86,6 +87,8 @@ export function Searching({
         <button type="button" className="btn ghost" onClick={onCancel}>
           Цуцлах
         </button>
+
+        {onOpenWall && <WallLink onClick={onOpenWall} variant="inline" />}
 
         {permission === 'default' && (
           <div className="notify-cta">

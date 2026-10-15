@@ -6,3 +6,4 @@ dist/
 reports.jsonl
 .DS_Store
 .vercel
+confessions.json

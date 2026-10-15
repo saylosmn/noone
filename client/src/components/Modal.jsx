@@ -13,7 +13,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
       if (e.key === 'Escape') onClose();
       if (e.key === 'Tab' && panelRef.current) {
         const focusables = panelRef.current.querySelectorAll(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
         );
         if (!focusables.length) return;
         const first = focusables[0];

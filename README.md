@@ -13,7 +13,8 @@ noone/
 │   └── src/         Дэлгэцүүд, socket логик
 ├── server/          Express + Socket.IO (Render)
 │   ├── src/chat.js  Matchmaking, чат, reply, typing, skip, block/report, rate limit
-│   └── test/        Socket e2e тестүүд (17)
+│   ├── src/confessions.js  Нууц хана (REST API)
+│   └── test/        Socket e2e + нууц ханын тестүүд
 ├── render.yaml      Render Blueprint
 └── client/vercel.json  Vercel тохиргоо (Root Directory = client)
 ```
@@ -33,6 +34,7 @@ noone/
 | Reaction, стикер | Мессеж дээр ❤️ 😂 👍 😮 😢 🔥 (desktop: 😊+ товч, утас: удаан дарах). noone-ийн өөрийн 12 стикер |
 | Сургууль | ШУТИС, МУИС, СЭЗИС… сонговол нэг сургуулийнхныг хамгийн түрүүнд холбоно (3 оноо, сонирхол 1 оноо). Ижил байвал л харагдана |
 | Хараалын шүүлтүүр | Монгол (кирилл/латин), орос үгс, англи хараалыг серверт «f***» хэлбэрт оруулна (`server/src/profanity.js`) |
+| Нууц хана | `/hana` — нэргүй confession: бичих (10–500 тэмдэгт, ангилал, сургууль заавал биш), ❤️, Шинэ / 🔥 Шилдэг (7 хоног), ангилал ба сургуулиар шүүх. Хуваалцах: Instagram story-д зориулсан 1080×1920 зураг + `/hana/<id>` линк. Утас, линк, @хаяг, имэйлийг хориглоно, хараалыг далдална. 3 хүн мэдээлбэл (хувийн мэдээлэл / насанд хүрээгүй бол 2) автоматаар нуугдана. Зохиогч өөрийнхөөг устгана. 30 хоногийн дараа устна. Хүн хайж байх зуураа уншиж болно, хүн олдмогц чат руу шилжинэ |
 | Унтахгүй | Render дээр UB цагаар 08:00–02:00 хооронд сервер 10 мин тутам өөр рүүгээ ping хийж сэрүүн байна (`KEEP_ALIVE_HOURS`) |
 | Апп шиг (PWA) | Нүүр дэлгэцэнд нэмэх товч (Android: «Суулгах», iPhone: Safari → Share → Add to Home Screen заавар). Апп горимд «Мэдэгдэл асаах» |
 | Web Push | Сервер VAPID түлхүүрээ өөрөө үүсгэнэ (тохируулах шаардлагагүй). Апп хаалттай/нуугдсан үед «Шинэ мессеж ирлээ» мэдэгдэл (агуулгагүй). Push-тэй хэрэглэгчийн чат 5 мин хүлээгдэж, хүргэгдээгүй мессеж түр санах ойд байгаад буцаж ороход хүргэгдэнэ, дараа нь устна |
@@ -73,6 +75,12 @@ Render-ийн `ALLOW_VERCEL_PREVIEWS=true` тул бүх `*.vercel.app` хаяг
 - Render-ийн **үнэгүй** багц 15 минут идэвхгүй бол унтдаг. Дараагийн анхны хэрэглэгч ~30–60 сек хүлээнэ (сайт "Сервер сэрж байна…" гэж харуулна). Байнга сэрүүн байлгах бол Starter багц эсвэл uptime ping ашиглана.
 - **Vercel дээр backend ажиллахгүй**: Vercel serverless функц байнгын WebSocket холболт, санах ойн дараалал барьж чаддаггүй тул Socket.IO серверийг Render дээр байрлуулсан.
 
+### 4. Нууц ханыг байнга хадгалах (Upstash, үнэгүй)
+
+1. <https://console.upstash.com> → **Create Database** (Redis, бүс: ap-southeast-1 Singapore).
+2. Database → **REST API** хэсгээс `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`-ийг хуулна.
+3. Render → noone-server → **Environment** → хоёуланг нь нэмээд Save. Логт `Нууц хана: upstash` гарвал болсон.
+
 ## Локалд ажиллуулах
 
 Node.js 20+ хэрэгтэй.
@@ -89,7 +97,7 @@ npm run dev            # backend :4000, frontend :5173
 Тест:
 
 ```bash
-npm test               # 17 socket e2e тест
+npm test               # socket + нууц ханын тестүүд
 ```
 
 ## ⚠️ Санах ойн дараалал (MVP)
@@ -120,7 +128,12 @@ Matchmaking дараалал, идэвхтэй өрөө, блок жагсаал
 | `REPORT_LOG_FILE` | хоосон | Мэдээллийг JSONL файлд бичих |
 | `REPORT_HASH_SALT` | санамсаргүй | ID/IP hash-ийн давс |
 | `REPORT_BAN_THRESHOLD` / `REPORT_BAN_MS` | `3` / `900000` | 1 цагт 3 өөр хүн мэдээлбэл 15 мин хязгаарлана |
-| `ADMIN_TOKEN` | хоосон | `GET /api/admin/reports` (`Authorization: Bearer …`) |
+| `ADMIN_TOKEN` | хоосон | `GET /api/admin/reports`, `GET /api/admin/confessions`, `POST …/:id/hide {hidden}`, `DELETE …/:id` (`Authorization: Bearer …`) |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | хоосон | **Нууц ханыг байнга хадгалах.** Тохируулаагүй бол санах ойд л байж, Render дахин асахад арилна |
+| `CONFESSION_FILE` | хоосон | Локалд confession-ийг JSON файлд хадгалах |
+| `CONFESSION_HIDE_REPORTS` | `3` | Хэдэн хүн мэдээлбэл нуух |
+| `CONFESSION_POST_BURST` / `CONFESSION_POST_INTERVAL_SEC` | `3` / `300` | Нэг төхөөрөмж 3-ыг дараалан, дараа нь 5 мин тутам 1 |
+| `CONFESSION_RETENTION_DAYS` / `CONFESSION_MAX_ITEMS` | `30` / `2000` | |
 | `KEEP_ALIVE` / `KEEP_ALIVE_HOURS` | `true` / `8-2` | Render-ийн `RENDER_EXTERNAL_URL` руу 10 мин тутам ping. UB цагаар 08:00–02:00 (≈560 цаг/сар). `0-0` = үргэлж (≈744 цаг) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | хоосон | Web Push. `npm run vapid --prefix server` |
 
@@ -144,3 +157,16 @@ Matchmaking дараалал, идэвхтэй өрөө, блок жагсаал
 | `chat:block`, `chat:report {reason}` | `chat:partner_status {online}` |
 | `chat:rate {roomId, rating}` | `chat:ended {reason}` |
 | `presence:visibility`, `push:subscribe` | `session:replaced` |
+
+## Нууц ханын REST API
+
+Бүх хүсэлтэд `X-Noone-Device: d_<32 hex>` (клиент localStorage-д үүсгэнэ, серверт зөвхөн hash нь хадгалагдана).
+
+| | |
+|---|---|
+| `GET /api/confessions?sort=new\|top&tag=&school=&offset=` | `{items, next, total}` |
+| `GET /api/confessions/:id` | `{item}` |
+| `POST /api/confessions {text, tag, school, adultConfirmed}` | `{item}` |
+| `POST /api/confessions/:id/like {like}` | `{likes, liked}` |
+| `POST /api/confessions/:id/report {reason}` | `{hidden}` |
+| `DELETE /api/confessions/:id` | Зөвхөн зохиогч |

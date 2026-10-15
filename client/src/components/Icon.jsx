@@ -6,6 +6,18 @@ const PATHS = {
     </>
   ),
   close: <path d="M18 6 6 18M6 6l12 12" />,
+  heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  arrowLeft: <path d="M19 12H5M12 19l-7-7 7-7" />,
+  link: <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />,
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-5-5L5 21" />
+    </>
+  ),
+  quote: <path d="M7 7h4v6c0 2.2-1.3 3.7-3.5 4M14 7h4v6c0 2.2-1.3 3.7-3.5 4" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
   download: <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />,
   share: <path d="M12 3v13M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />,

@@ -18,9 +18,16 @@ import { Landing } from './components/Landing.jsx';
 import { Searching } from './components/Searching.jsx';
 import { Chat } from './components/Chat.jsx';
 import { SettingsModal } from './components/SettingsModal.jsx';
+import { Confessions } from './components/Confessions.jsx';
 import { ConnectionBanner, ReplacedScreen, Toasts } from './components/Feedback.jsx';
 
 const PROFILE_KEY = 'noone.profile';
+
+// Энгийн замчлал: "/" — чат, "/hana" — нууц хана, "/hana/<id>" — тодорхой confession
+function parseRoute(pathname) {
+  const m = pathname.match(/^\/hana(?:\/(cf_[a-f0-9]{12}))?\/?$/);
+  return m ? { view: 'wall', id: m[1] || null } : { view: 'home', id: null };
+}
 const BASE_TITLE = 'noone — нэргүй чат';
 
 export default function App() {
@@ -40,6 +47,18 @@ export default function App() {
   const profileRef = useRef(profile);
   profileRef.current = profile;
   useEffect(() => session.set(PROFILE_KEY, profile), [profile]);
+
+  const [route, setRoute] = useState(() => parseRoute(window.location.pathname));
+  const navigate = useCallback((path, { replace = false } = {}) => {
+    if (window.location.pathname !== path) window.history[replace ? 'replaceState' : 'pushState'](null, '', path);
+    setRoute(parseRoute(path));
+    window.scrollTo(0, 0);
+  }, []);
+  useEffect(() => {
+    const onPop = () => setRoute(parseRoute(window.location.pathname));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const [toasts, setToasts] = useState([]);
   const pushToast = useCallback((text, tone = 'error') => {
@@ -86,6 +105,11 @@ export default function App() {
   syncPushRef.current = syncPush;
   // Чатлаж / хайж байхад гэнэт refresh хийхгүй
   const updateReady = useUpdateCheck(state.phase === 'chatting' || state.phase === 'searching');
+
+  // Хүн олдмогц нууц ханаас чат руу шилжинэ
+  useEffect(() => {
+    if (state.phase === 'chatting' && route.view === 'wall') navigate('/', { replace: true });
+  }, [state.phase, route.view, navigate]);
 
   // Таб-ын гарчигт уншаагүй тоо
   useEffect(() => {
@@ -156,7 +180,21 @@ export default function App() {
   if (state.replaced) return <ReplacedScreen onRestart={actions.restartFresh} />;
 
   let screen;
-  if (state.phase === 'searching') {
+  if (route.view === 'wall' && state.phase !== 'chatting') {
+    screen = (
+      <Confessions
+        focusId={route.id}
+        profile={profile}
+        onProfile={setProfile}
+        onBack={() => navigate('/')}
+        onNavigate={navigate}
+        onToast={pushToast}
+        searching={state.phase === 'searching'}
+        search={state.search}
+        onCancelSearch={actions.cancelSearch}
+      />
+    );
+  } else if (state.phase === 'searching') {
     screen = (
       <Searching
         search={state.search}
@@ -171,6 +209,7 @@ export default function App() {
         permission={permission}
         onEnableNotifications={enableNotifications}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenWall={() => navigate('/hana')}
       />
     );
   } else if (state.phase === 'chatting' || state.phase === 'ended') {
@@ -197,6 +236,7 @@ export default function App() {
         conn={state.conn}
         onStart={start}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenWall={() => navigate('/hana')}
         installSlot={<InstallCard permission={permission} onEnableNotifications={enableNotifications} />}
       />
     );

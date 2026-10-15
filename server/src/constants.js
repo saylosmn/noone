@@ -35,3 +35,7 @@ export const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 
 // "Найз болох" — харилцан зөвшөөрөлтэй үед л солилцоно
 export const CONTACT_PLATFORMS = ['instagram', 'telegram', 'facebook', 'snapchat', 'discord', 'steam'];
+
+// Нууц хана (confession) — ангилал
+export const CONFESSION_TAGS = ['love', 'school', 'funny', 'secret', 'sad', 'question'];
+export const CONFESSION_REPORT_REASONS = ['personal_info', 'harassment', 'sexual', 'minor', 'hate', 'spam', 'other'];
