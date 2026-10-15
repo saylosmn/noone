@@ -12,7 +12,7 @@ import { applySavedTheme } from './lib/theme.js';
 applySavedTheme();
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {
+  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {
     window.__nooneSwError = true;
     window.dispatchEvent(new Event('noone:sw-error'));
   });

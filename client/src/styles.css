@@ -1888,6 +1888,26 @@ code {
   text-decoration: none;
 }
 
+/* ---------- Шинэ хувилбар ---------- */
+.update-banner {
+  position: sticky;
+  top: 0;
+  z-index: 49;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-2));
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.45);
+  font-size: 13.5px;
+}
+.update-banner span {
+  flex: 1;
+}
+.app:has(.update-banner) .screen.chat {
+  height: calc(100dvh - 52px);
+}
+
 /* ---------- Connection banner & toasts ---------- */
 .conn-banner {
   position: sticky;

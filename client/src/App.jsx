@@ -3,6 +3,7 @@ import { useChat } from './lib/useChat.js';
 import { useSettings } from './lib/useSettings.js';
 import { session } from './lib/storage.js';
 import { applyTheme } from './lib/theme.js';
+import { useUpdateCheck } from './lib/useUpdateCheck.js';
 import {
   notificationPermission,
   playPing,
@@ -68,6 +69,8 @@ export default function App() {
   }, []);
 
   const { state, actions } = useChat({ profileRef, onIncoming, onMatch, onToast: pushToast });
+  // Чатлаж / хайж байхад гэнэт refresh хийхгүй
+  const updateReady = useUpdateCheck(state.phase === 'chatting' || state.phase === 'searching');
 
   // Таб-ын гарчигт уншаагүй тоо
   useEffect(() => {
@@ -184,6 +187,14 @@ export default function App() {
   return (
     <div className="app">
       <ConnectionBanner conn={state.conn} everConnected={state.everConnected} slow={slow} onReconnect={actions.reconnect} />
+      {updateReady && (
+        <div className="update-banner" role="status">
+          <span>✨ Шинэ хувилбар гарлаа. Чат дуусмагц автоматаар шинэчлэгдэнэ.</span>
+          <button type="button" className="btn sm light" onClick={() => window.location.reload()}>
+            Одоо шинэчлэх
+          </button>
+        </div>
+      )}
       {screen}
       <Toasts toasts={toasts} onDismiss={dismissToast} />
       <SettingsModal
