@@ -1,7 +1,6 @@
 export const INTERESTS = [
   { id: 'music', label: 'Хөгжим', emoji: '🎵' },
-  { id: 'games', label: 'Тоглоом', emoji: '🎮' },
-  { id: 'movies', label: 'Кино', emoji: '🎬' },
+  { id: 'cs2', label: 'CS GO 2', emoji: '🎯' },
   { id: 'sports', label: 'Спорт', emoji: '⚽' },
   { id: 'tech', label: 'Технологи', emoji: '💻' },
   { id: 'other', label: 'Бусад', emoji: '✨' },
@@ -41,7 +40,7 @@ export const ENDED_TEXT = {
 };
 
 export const ERROR_TEXT = {
-  rate_limited: 'Хэт хурдан байна. Түр хүлээгээд дахин оролдоно уу.',
+  rate_limited: 'Түр хүлээнэ үү.',
   duplicate: 'Ижил мессежийг дахин дахин илгээхгүй байна уу.',
   partner_offline: 'Нөгөө хүн түр салсан тул мессеж илгээгдсэнгүй.',
   too_long: 'Мессеж хэт урт байна.',
@@ -61,3 +60,10 @@ export const ERROR_TEXT = {
 export const errorText = (code) => ERROR_TEXT[code] || 'Алдаа гарлаа. Дахин оролдоно уу.';
 
 export const MAX_MESSAGE_LENGTH = 1000;
+
+// Нөгөө хүн үргэлж ингэж харагдана (нэр сонгохгүй)
+export const PARTNER_NAME = 'Нууц нэгэн';
+
+// Спамын хязгаар (сервертэй ижил): 10 мессеж дараалан, дараа нь секундэд 3.
+// Давбал 3 секунд "Түр хүлээнэ үү" гэж харуулна.
+export const SPAM_LIMIT = { burst: 10, perSecond: 3, cooldownMs: 3000 };

@@ -1,5 +1,6 @@
 import { Modal } from './Modal.jsx';
 import { Icon } from './Icon.jsx';
+import { ACCENTS, BACKGROUNDS } from '../lib/theme.js';
 
 function Toggle({ label, description, checked, onChange, disabled }) {
   return (
@@ -33,15 +34,55 @@ export function SettingsModal({
   pushConfig,
   pushState,
   onTogglePush,
-  nickname,
-  onReroll,
-  canReroll,
 }) {
   const perm = PERMISSION_TEXT[permission] || PERMISSION_TEXT.default;
   const pushAvailable = pushConfig?.enabled && swStatus === 'ready' && pushState !== 'unsupported';
 
   return (
     <Modal open={open} onClose={onClose} title="Тохиргоо" size="lg">
+      <section className="settings-section">
+        <h3>Өнгө</h3>
+        <div className="theme-label">Гол өнгө</div>
+        <div className="swatches" role="radiogroup" aria-label="Гол өнгө">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="radio"
+              aria-checked={settings.accent === a.id}
+              aria-label={a.label}
+              title={a.label}
+              className={`swatch ${settings.accent === a.id ? 'is-active' : ''}`}
+              style={{ '--sw': a.color, '--sw2': a.alt }}
+              onClick={() => update({ accent: a.id })}
+            >
+              {settings.accent === a.id && <Icon name="check" size={16} strokeWidth={3} />}
+            </button>
+          ))}
+        </div>
+        <div className="theme-label">Дэвсгэр</div>
+        <div className="bg-options" role="radiogroup" aria-label="Дэвсгэр">
+          {BACKGROUNDS.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="radio"
+              aria-checked={settings.background === b.id}
+              className={`bg-option ${settings.background === b.id ? 'is-active' : ''}`}
+              onClick={() => update({ background: b.id })}
+            >
+              <span className="bg-dot" style={{ background: b.swatch }} aria-hidden="true" />
+              {b.label}
+            </button>
+          ))}
+        </div>
+        <div className="theme-preview" aria-hidden="true">
+          <span className="tp-theirs">Сайн уу 👋</span>
+          <span className="tp-mine">Сайн, сайн байна уу?</span>
+        </div>
+        <p className="hint">Өнгө зөвхөн танай төхөөрөмж дээр хадгалагдана. Нөгөө хүнд нөлөөлөхгүй.</p>
+      </section>
+
       <section className="settings-section">
         <h3>Мэдэгдэл</h3>
         <div className="perm-row">
@@ -134,17 +175,8 @@ export function SettingsModal({
 
       <section className="settings-section">
         <h3>Нууцлал</h3>
-        <div className="kv">
-          <span>
-            Таны түр нэр: <strong>{nickname || '…'}</strong>
-          </span>
-          <button type="button" className="btn sm ghost" onClick={onReroll} disabled={!canReroll}>
-            <Icon name="dice" size={16} /> Солих
-          </button>
-        </div>
-        {!canReroll && <p className="hint">Чатлаж байх үед нэр солих боломжгүй.</p>}
         <ul className="privacy-list">
-          <li>Бүртгэл, нэр, утас, байршил шаардахгүй. Tab бүрт санамсаргүй түр ID өгнө.</li>
+          <li>Бүртгэл, нэр, утас, байршил шаардахгүй. Нөгөө хүнд та зүгээр “Нууц нэгэн” гэж харагдана.</li>
           <li>Мессежийг серверт хадгалдаггүй — зөвхөн нөгөө хүн рүү дамжуулна. Чат дуусахад танай төхөөрөмж дээрээс ч арилна.</li>
           <li>Мэдээлэх үед зөвхөн шалтгаан, цаг, нууцалсан түр ID бүртгэгдэнэ. Чатын бичвэр хадгалагдахгүй.</li>
           <li>Хүйс нь таны өөрийн мэдүүлэг бөгөөд баталгаажуулдаггүй.</li>

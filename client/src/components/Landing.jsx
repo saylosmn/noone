@@ -11,7 +11,7 @@ export function OnlinePill({ conn, online }) {
   );
 }
 
-export function Landing({ profile, onProfile, nickname, onReroll, stats, conn, onStart, onOpenSettings }) {
+export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettings }) {
   const [tried, setTried] = useState(false);
   const toggleInterest = (id) =>
     onProfile({
@@ -38,6 +38,9 @@ export function Landing({ profile, onProfile, nickname, onReroll, stats, conn, o
         <Logo />
         <div className="topbar-right">
           <OnlinePill conn={conn} online={stats.online} />
+          <button type="button" className="icon-btn" aria-label="Өнгө солих" title="Өнгө солих" onClick={onOpenSettings}>
+            <Icon name="palette" />
+          </button>
           <button type="button" className="icon-btn" aria-label="Тохиргоо" onClick={onOpenSettings}>
             <Icon name="settings" />
           </button>
@@ -48,9 +51,7 @@ export function Landing({ profile, onProfile, nickname, onReroll, stats, conn, o
         <section className="hero">
           <p className="eyebrow">Бүртгэлгүй · Нэргүй · 18+</p>
           <h1>
-            Нэрээ нууцал.
-            <br />
-            <span className="grad-text">Шууд ярилц.</span>
+            Нууц хэн <span className="grad-text">нэгэнтэй</span>
           </h1>
           <p className="hero-sub">
             Эсрэг хүйсийн санамсаргүй хүнтэй бодит цагт текстээр чатла. Мессеж хаана ч хадгалагддаггүй.
@@ -105,16 +106,6 @@ export function Landing({ profile, onProfile, nickname, onReroll, stats, conn, o
               })}
             </div>
             <p className="hint">Ижил сонирхолтой хүнийг түрүүлж хайна. Олдохгүй бол бусадтай холбоно.</p>
-          </div>
-
-          <div className="nickname-row">
-            <div>
-              <div className="field-label small">Таны түр нэр</div>
-              <div className="nickname">{nickname || '…'}</div>
-            </div>
-            <button type="button" className="btn ghost sm" onClick={onReroll} disabled={!online}>
-              <Icon name="dice" size={16} /> Солих
-            </button>
           </div>
 
           <div className="rules-box">

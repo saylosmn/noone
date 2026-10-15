@@ -83,13 +83,13 @@ async function matchedPair(interestsA = [], interestsB = []) {
   return { a, b, ma: await fa, mb: await fb };
 }
 
-test('нэргүй сесс, санамсаргүй түр нэр олгоно', async () => {
+test('нэргүй сесс; нөгөө хүн "Нууц нэгэн" гэж харагдана', async () => {
   const s = await connect();
   assert.match(s.session.clientId, /^c_[a-f0-9]{24}$/);
-  assert.ok(s.session.nickname.includes('#'));
-  const r = await emit(s, 'profile:reroll');
-  assert.equal(r.ok, true);
-  assert.ok(r.nickname);
+  assert.equal(s.session.nickname, undefined);
+  const { ma, mb } = await matchedPair();
+  assert.equal(ma.partner.nickname, 'Нууц нэгэн');
+  assert.equal(mb.partner.nickname, 'Нууц нэгэн');
 });
 
 test('18+ баталгаажуулалтгүйгээр дараалалд орохгүй', async () => {
@@ -109,11 +109,14 @@ test('ижил хүйстэнг холбохгүй, эсрэг хүйсийг х
 
   const f = await connect();
   const found = waitFor(f, 'match:found');
+  const m1Found = waitFor(m1, 'match:found');
+  const m2None = expectNone(m2, 'match:found', 700);
   await join(f, 'female');
   const match = await found;
   assert.ok(match.roomId);
   // Эхэлж хүлээсэн эрэгтэйтэй холбогдсон байх ёстой
-  assert.equal(match.partner.nickname, m1.session.nickname);
+  assert.equal((await m1Found).roomId, match.roomId);
+  await m2None;
 });
 
 test('ижил сонирхолтой хүнийг түрүүлж тааруулна', async () => {
@@ -124,16 +127,17 @@ test('ижил сонирхолтой хүнийг түрүүлж тааруул
 
   const f = await connect();
   const found = waitFor(f, 'match:found');
-  await join(f, 'female', ['music']);
+  const fanFound = waitFor(musicFan, 'match:found');
+  await join(f, 'female', ['music', 'cs2']);
   const match = await found;
-  assert.equal(match.partner.nickname, musicFan.session.nickname);
+  assert.equal((await fanFound).roomId, match.roomId);
   assert.deepEqual(match.sharedInterests, ['music']);
 });
 
 test('ижил сонирхолтой хүн байхгүй бол хүлээгээд хэнтэй ч холбоно', async () => {
   const f = await connect();
   const first = waitFor(f, 'queue:status');
-  await join(f, 'female', ['games']);
+  await join(f, 'female', ['cs2']);
   assert.equal((await first).phase, 'interest');
   assert.equal((await waitFor(f, 'queue:status', 2000)).phase, 'anyone');
 
@@ -190,7 +194,9 @@ test('урт, хоосон мессеж, хяналтын тэмдэгт', () =>
 test('спамын хязгаар: хэт хурдан мессеж болон давтагдсан мессеж', async () => {
   const { a } = await matchedPair();
   const results = [];
-  for (let i = 0; i < 9; i += 1) results.push(await emit(a, 'chat:message', { text: `мессеж ${i}` }));
+  for (let i = 0; i < 14; i += 1) results.push(await emit(a, 'chat:message', { text: `мессеж ${i}` }));
+  // Эхний 10 нь дамжина, дараа нь хязгаарлагдана
+  assert.ok(results.slice(0, 10).every((r) => r.ok));
   assert.ok(results.some((r) => r.error === 'rate_limited'));
   assert.ok(results.find((r) => r.error === 'rate_limited').retryAfterMs > 0);
 
@@ -198,9 +204,11 @@ test('спамын хязгаар: хэт хурдан мессеж болон �
   const d1 = await emit(a2, 'chat:message', { text: 'Нэг' });
   const d2 = await emit(a2, 'chat:message', { text: 'нэг' });
   const d3 = await emit(a2, 'chat:message', { text: 'НЭГ' });
+  const d4 = await emit(a2, 'chat:message', { text: 'нэг ' });
   assert.equal(d1.ok, true);
   assert.equal(d2.ok, true);
-  assert.equal(d3.error, 'duplicate');
+  assert.equal(d3.ok, true);
+  assert.equal(d4.error, 'duplicate');
 });
 
 test('"Дараагийн хүн": нөгөөд нь мэдэгдэж, өөрөө дахин дараалалд орно', async () => {
@@ -214,8 +222,9 @@ test('"Дараагийн хүн": нөгөөд нь мэдэгдэж, өөрө�
 
   const f2 = await connect();
   const found = waitFor(a, 'match:found');
+  const f2Found = waitFor(f2, 'match:found');
   await join(f2, 'female');
-  assert.equal((await found).partner.nickname, f2.session.nickname);
+  assert.equal((await found).roomId, (await f2Found).roomId);
 });
 
 test('блоклосон хүнтэй дахин холбогдохгүй', async () => {

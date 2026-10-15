@@ -7,6 +7,9 @@ import '@fontsource/unbounded/600.css';
 import '@fontsource/unbounded/700.css';
 import './styles.css';
 import App from './App.jsx';
+import { applySavedTheme } from './lib/theme.js';
+
+applySavedTheme();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {

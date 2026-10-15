@@ -1,6 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { KeyedLimiter } from './limiter.js';
-import { GENDERS, INTERESTS, REPORT_REASONS, randomNickname } from './constants.js';
+import { GENDERS, INTERESTS, REPORT_REASONS, PARTNER_NAME } from './constants.js';
 import { isValidSubscription } from './push.js';
 
 const MESSAGE_ID_RE = /^m_[a-f0-9]{16}$/;
@@ -92,7 +92,6 @@ export function attachChat(io, { config, push, reports }) {
       id: `c_${hex(12)}`,
       resumeToken: hex(24),
       ipHash: ipH,
-      nickname: randomNickname(),
       socketId: null,
       gender: null,
       interests: [],
@@ -135,7 +134,7 @@ export function attachChat(io, { config, push, reports }) {
         roomId: room.id,
         startedAt: room.startedAt,
         sharedInterests: room.sharedInterests,
-        partner: { nickname: partner?.nickname || 'Үл таних', online: Boolean(partner?.socketId) },
+        partner: { nickname: PARTNER_NAME, online: Boolean(partner?.socketId) },
       },
     };
   }
@@ -193,7 +192,7 @@ export function attachChat(io, { config, push, reports }) {
         roomId: room.id,
         startedAt: now,
         sharedInterests,
-        partner: { nickname: other.nickname, online: true },
+        partner: { nickname: PARTNER_NAME, online: true },
       });
       if (!me.visible) notifyPush(me, { title: 'noone', body: 'Хүн олдлоо — чат эхэллээ', tag: 'noone-match' });
     }
@@ -327,7 +326,6 @@ export function attachChat(io, { config, push, reports }) {
     socket.emit('session', {
       clientId: client.id,
       resumeToken: client.resumeToken,
-      nickname: client.nickname,
       resumed,
       state: describeState(client),
       pushEnabled: push.enabled,
@@ -359,13 +357,6 @@ export function attachChat(io, { config, push, reports }) {
         }
       });
     };
-
-    on('profile:reroll', (c) => {
-      if (c.status === 'chatting') return { ok: false, error: 'busy' };
-      if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
-      c.nickname = randomNickname();
-      return { ok: true, nickname: c.nickname };
-    });
 
     on('queue:join', (c, payload) => {
       if (c.status === 'chatting') return { ok: false, error: 'already_chatting' };
@@ -401,10 +392,10 @@ export function attachChat(io, { config, push, reports }) {
 
       // Ижил мессежийг дахин дахин илгээх спамаас сэргийлнэ
       const now = Date.now();
-      // Агуулгыг биш, зөвхөн богино hash-ийг 30 секунд санана
+      // Агуулгыг биш, зөвхөн богино hash-ийг 15 секунд санана. 15 сек дотор ижил мессеж 4 дэх удаагаа бол хориглоно.
       const norm = createHash('sha256').update(text.toLowerCase().replace(/\s+/g, ' ')).digest('base64').slice(0, 16);
-      c.lastTexts = c.lastTexts.filter((x) => now - x.ts < 30000);
-      if (c.lastTexts.filter((x) => x.norm === norm).length >= 2) {
+      c.lastTexts = c.lastTexts.filter((x) => now - x.ts < 15000);
+      if (c.lastTexts.filter((x) => x.norm === norm).length >= 3) {
         return { ok: false, error: 'duplicate' };
       }
 

@@ -41,8 +41,8 @@ export function loadConfig(overrides = {}) {
     },
     limits: {
       connectPerMinute: int(env.LIMIT_CONNECT_PER_MINUTE, 30),
-      messageBurst: int(env.LIMIT_MESSAGE_BURST, 6),
-      messagePerSecond: Number(env.LIMIT_MESSAGE_PER_SECOND) || 1,
+      messageBurst: int(env.LIMIT_MESSAGE_BURST, 10),
+      messagePerSecond: Number(env.LIMIT_MESSAGE_PER_SECOND) || 3,
     },
   };
   return {

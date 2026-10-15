@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { createSocket, identity } from './socket.js';
-import { errorText, interestLabel } from './constants.js';
+import { PARTNER_NAME, SPAM_LIMIT, errorText, interestLabel } from './constants.js';
 
 let seq = 0;
 const sys = (text) => ({ id: `s_${Date.now()}_${(seq += 1)}`, system: true, text, ts: Date.now() });
@@ -8,8 +8,8 @@ const sys = (text) => ({ id: `s_${Date.now()}_${(seq += 1)}`, system: true, text
 const initialState = {
   conn: 'connecting', // connecting | online | offline
   everConnected: false,
-  nickname: '',
   pushEnabled: false,
+  cooldownUntil: 0,
   stats: { online: 0, waiting: { male: 0, female: 0 } },
   phase: 'idle', // idle | searching | chatting | ended
   search: { phase: 'interest', since: 0 },
@@ -26,7 +26,7 @@ function matchNote(room) {
   const shared = room.sharedInterests?.length
     ? ` Та хоёр ${room.sharedInterests.map(interestLabel).join(', ')} сонирхдог.`
     : '';
-  return sys(`Та ${room.partner.nickname}-тэй холбогдлоо.${shared} Мэнд мэдээд эхлээрэй!`);
+  return sys(`Та нууц нэгэнтэй холбогдлоо.${shared} Мэнд мэдээд эхлээрэй!`);
 }
 
 function reducer(state, a) {
@@ -34,9 +34,9 @@ function reducer(state, a) {
     case 'conn':
       return { ...state, conn: a.conn, everConnected: state.everConnected || a.conn === 'online' };
     case 'session':
-      return { ...state, nickname: a.nickname, pushEnabled: a.pushEnabled };
-    case 'nickname':
-      return { ...state, nickname: a.nickname };
+      return { ...state, pushEnabled: a.pushEnabled };
+    case 'cooldown':
+      return { ...state, cooldownUntil: a.until };
     case 'stats':
       return { ...state, stats: a.stats };
     case 'searching':
@@ -170,7 +170,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
 
     socket.on('session', (s) => {
       identity.save(s.clientId, s.resumeToken);
-      dispatch({ type: 'session', nickname: s.nickname, pushEnabled: s.pushEnabled });
+      dispatch({ type: 'session', pushEnabled: s.pushEnabled });
       const cur = stateRef.current;
       const srv = s.state || {};
       if (srv.status === 'chatting' && srv.room) {
@@ -195,7 +195,12 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     socket.on('match:found', (m) => {
       dispatch({
         type: 'matched',
-        room: { roomId: m.roomId, startedAt: m.startedAt, sharedInterests: m.sharedInterests || [], partner: m.partner },
+        room: {
+          roomId: m.roomId,
+          startedAt: m.startedAt,
+          sharedInterests: m.sharedInterests || [],
+          partner: { nickname: PARTNER_NAME, online: m.partner?.online !== false },
+        },
       });
       cbRef.current.onMatch?.(m);
     });
@@ -268,6 +273,27 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     if (profileRef.current?.gender) await startSearch(profileRef.current);
   }, [request, startSearch, profileRef]);
 
+  // Клиент талын token bucket — 10-аас олон мессеж хурдан бичвэл серверт хүргэхгүй, "Түр хүлээнэ үү" гэж харуулна
+  const bucket = useRef({ tokens: SPAM_LIMIT.burst, last: Date.now() });
+  const startCooldown = useCallback((ms = SPAM_LIMIT.cooldownMs) => {
+    dispatch({ type: 'cooldown', until: Date.now() + Math.max(ms, SPAM_LIMIT.cooldownMs) });
+  }, []);
+
+  /** Илгээж болох эсэх (синхрон). true бол нэг "token" хэрэглэнэ. */
+  const takeSendToken = useCallback(() => {
+    const now = Date.now();
+    if (stateRef.current.cooldownUntil > now) return false;
+    const b = bucket.current;
+    b.tokens = Math.min(SPAM_LIMIT.burst, b.tokens + ((now - b.last) / 1000) * SPAM_LIMIT.perSecond);
+    b.last = now;
+    if (b.tokens >= 1) {
+      b.tokens -= 1;
+      return true;
+    }
+    startCooldown();
+    return false;
+  }, [startCooldown]);
+
   const sendMessage = useCallback(
     async (text, replyTo = null) => {
       const clean = text.trim();
@@ -283,26 +309,29 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
         return true;
       }
       dispatch({ type: 'update_message', id: tempId, patch: { status: 'failed', error: res.error } });
-      toast(errorText(res.error));
+      if (res.error === 'rate_limited') startCooldown(res.retryAfterMs);
+      else toast(errorText(res.error));
       return false;
     },
-    [request],
+    [request, startCooldown],
   );
 
   const retryMessage = useCallback(
     async (id) => {
       const msg = stateRef.current.messages.find((m) => m.id === id);
       if (!msg || msg.status !== 'failed') return;
+      if (!takeSendToken()) return;
       dispatch({ type: 'update_message', id, patch: { status: 'sending', error: null } });
       const res = await request('chat:message', { text: msg.text, replyTo: msg.replyTo });
       if (res.ok) {
         dispatch({ type: 'update_message', id, patch: { id: res.id, ts: res.ts, status: 'sent' } });
       } else {
         dispatch({ type: 'update_message', id, patch: { status: 'failed', error: res.error } });
-        toast(errorText(res.error));
+        if (res.error === 'rate_limited') startCooldown(res.retryAfterMs);
+        else toast(errorText(res.error));
       }
     },
-    [request],
+    [request, takeSendToken, startCooldown],
   );
 
   const setTyping = useCallback((typing) => {
@@ -355,12 +384,6 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     if (phase === 'searching') await request('queue:leave');
   }, [request]);
 
-  const reroll = useCallback(async () => {
-    const res = await request('profile:reroll');
-    if (res.ok) dispatch({ type: 'nickname', nickname: res.nickname });
-    else toast(errorText(res.error));
-  }, [request]);
-
   const reconnect = useCallback(() => {
     const socket = socketRef.current;
     if (socket && !socket.connected) {
@@ -387,6 +410,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       cancelSearch,
       next,
       sendMessage,
+      takeSendToken,
       retryMessage,
       setTyping,
       leave,
@@ -395,7 +419,6 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       rate,
       dismissRating,
       goHome,
-      reroll,
       reconnect,
       restartFresh,
       sendPushSubscription,

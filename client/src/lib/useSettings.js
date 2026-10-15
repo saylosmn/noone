@@ -7,6 +7,8 @@ const DEFAULTS = {
   sound: true,
   icebreakers: true,
   pushOptIn: false,
+  accent: 'pink',
+  background: 'navy',
 };
 
 export function useSettings() {

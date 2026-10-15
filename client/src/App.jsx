@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from './lib/useChat.js';
 import { useSettings } from './lib/useSettings.js';
 import { session } from './lib/storage.js';
+import { applyTheme } from './lib/theme.js';
 import {
   getServiceWorker,
   notificationPermission,
@@ -25,6 +26,8 @@ export default function App() {
   const [settings, updateSettings] = useSettings();
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+
+  useEffect(() => applyTheme(settings.accent, settings.background), [settings.accent, settings.background]);
 
   const [profile, setProfile] = useState(() => ({
     gender: null,
@@ -234,8 +237,6 @@ export default function App() {
       <Landing
         profile={profile}
         onProfile={setProfile}
-        nickname={state.nickname}
-        onReroll={actions.reroll}
         stats={state.stats}
         conn={state.conn}
         onStart={start}
@@ -261,9 +262,6 @@ export default function App() {
         pushConfig={pushConfig}
         pushState={pushState}
         onTogglePush={togglePush}
-        nickname={state.nickname}
-        onReroll={actions.reroll}
-        canReroll={state.phase !== 'chatting' && state.conn === 'online'}
       />
     </div>
   );

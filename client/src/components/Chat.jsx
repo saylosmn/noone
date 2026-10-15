@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ENDED_TEXT, MAX_MESSAGE_LENGTH, REPORT_REASONS, errorText, interestLabel } from '../lib/constants.js';
+import { ENDED_TEXT, MAX_MESSAGE_LENGTH, PARTNER_NAME, REPORT_REASONS, errorText, interestLabel } from '../lib/constants.js';
 import { formatTime, snippet } from '../lib/format.js';
 import { pickIcebreaker } from '../lib/icebreakers.js';
 import { Icon } from './Icon.jsx';
@@ -8,15 +8,22 @@ import { RatingCard } from './Feedback.jsx';
 
 const isCoarse = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
-function Avatar({ name }) {
-  const letter = (name.split(' ')[1] || name)[0] || '?';
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+function Avatar() {
   return (
-    <span className="avatar" style={{ '--h': hash }} aria-hidden="true">
-      {letter}
+    <span className="avatar" aria-hidden="true">
+      <Icon name="mask" size={22} />
     </span>
   );
+}
+
+function useCountdown(until) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (until <= Date.now()) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [until]);
+  return Math.max(0, until - now);
 }
 
 // ---------------- Цэс ----------------
@@ -127,7 +134,15 @@ function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grou
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      <div className={`bubble ${message.status === 'failed' ? 'is-failed' : ''}`}>
+      <div
+        className={`bubble ${message.status === 'failed' ? 'is-failed' : ''}`}
+        onDoubleClick={(e) => {
+          if (!canReply || e.target.closest('.quote')) return;
+          window.getSelection?.()?.removeAllRanges();
+          onReply(message);
+        }}
+        title={canReply ? 'Давхар дарж хариулах' : undefined}
+      >
         {message.replyTo && (
           <button
             type="button"
@@ -266,7 +281,7 @@ function MessageList({ messages, partnerTyping, partnerName, onReply, onRetry, j
 }
 
 // ---------------- Бичих хэсэг ----------------
-function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onCancelReply, onJumpReply, inputRef, disabled, partnerOnline }) {
+function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onCancelReply, onJumpReply, inputRef, disabled, partnerOnline, cooldownMs }) {
   const typingRef = useRef(false);
   const typingTimer = useRef(null);
   const composing = useRef(false);
@@ -305,13 +320,14 @@ function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onC
 
   const length = [...draft].length;
   const tooLong = length > MAX_MESSAGE_LENGTH;
-  const canSend = !disabled && draft.trim() && !tooLong;
+  const cooling = cooldownMs > 0;
+  const canSend = !disabled && draft.trim() && !tooLong && !cooling;
 
   const submit = () => {
     if (!canSend) return;
     stopTyping();
-    onSend(draft);
-    setDraft('');
+    // Хязгаар давсан бол бичсэнийг нь үлдээнэ
+    if (onSend(draft) !== false) setDraft('');
     inputRef.current?.focus();
   };
 
@@ -329,6 +345,15 @@ function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onC
 
   return (
     <div className="composer-wrap">
+      {cooling && (
+        <div className="rate-notice" role="alert">
+          <Icon name="clock" size={16} />
+          <span>
+            <strong>Түр хүлээнэ үү…</strong> Хэт олон мессеж дараалан бичлээ.
+          </span>
+          <span className="rate-count">{Math.ceil(cooldownMs / 1000)}</span>
+        </div>
+      )}
       {replyTo && (
         <div className="reply-preview">
           <button type="button" className="reply-preview-body" onClick={onJumpReply} title="Эх мессеж рүү очих">
@@ -437,7 +462,8 @@ function ReportModal({ open, onClose, onSubmit }) {
 // ---------------- Чатын дэлгэц ----------------
 export function Chat({ state, actions, settings, onOpenSettings }) {
   const { room, messages, partnerTyping, phase, ended, ratings, conn } = state;
-  const partnerName = room?.partner.nickname || 'Үл таних';
+  const partnerName = PARTNER_NAME;
+  const cooldownMs = useCountdown(state.cooldownUntil);
   const partnerOnline = Boolean(room?.partner.online);
   const [replyTo, setReplyTo] = useState(null);
   const [draft, setDraft] = useState('');
@@ -502,9 +528,11 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
   }, []);
 
   const send = (text) => {
+    if (!actions.takeSendToken()) return false;
     actions.sendMessage(text, replyTo?.id || null);
     setReplyTo(null);
     setSuggestion(null);
+    return true;
   };
 
   let statusText = 'Онлайн';
@@ -557,7 +585,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
     <div className="screen chat">
       <header className="chat-head">
         <div className="peer">
-          <Avatar name={partnerName} />
+          <Avatar />
           <div className="peer-info">
             <div className="peer-name">{partnerName}</div>
             <div className={`peer-status ${statusClass}`}>
@@ -580,6 +608,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
               { label: 'Блоклох', icon: 'block', onClick: () => setDialog('block'), danger: true, hidden: !chatting && !endedPartnerSide },
               { label: 'Чат дуусгах', icon: 'logout', onClick: () => setDialog('leave'), hidden: !chatting },
               { label: 'Нүүр хуудас', icon: 'home', onClick: actions.goHome, hidden: chatting },
+              { label: 'Өнгө солих', icon: 'palette', onClick: onOpenSettings },
               { label: 'Тохиргоо', icon: 'settings', onClick: onOpenSettings },
             ]}
           />
@@ -649,6 +678,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
             inputRef={inputRef}
             disabled={false}
             partnerOnline={partnerOnline}
+            cooldownMs={cooldownMs}
           />
         </div>
       )}
