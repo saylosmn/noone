@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GENDERS, INTERESTS, RULES, SCHOOLS } from '../lib/constants.js';
+import { GENDERS, INTERESTS, RULES } from '../lib/constants.js';
 import { Icon, Logo } from './Icon.jsx';
 
 export function OnlinePill({ conn, online }) {
@@ -106,29 +106,6 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
               })}
             </div>
             <p className="hint">Ижил сонирхолтой хүнийг түрүүлж хайна. Олдохгүй бол бусадтай холбоно.</p>
-          </div>
-
-          <div className="field">
-            <label className="field-label" htmlFor="school-select">
-              <span className="step">3</span> Сургууль <span className="optional">заавал биш</span>
-            </label>
-            <div className="select-wrap">
-              <select
-                id="school-select"
-                className="select"
-                value={profile.school || ''}
-                onChange={(e) => onProfile({ ...profile, school: e.target.value || null })}
-              >
-                <option value="">Хэлэхгүй</option>
-                {SCHOOLS.map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {sc.label}
-                  </option>
-                ))}
-              </select>
-              <Icon name="chevronDown" size={18} className="select-icon" />
-            </div>
-            <p className="hint">Нэг сургуулийн хүнийг хамгийн түрүүнд хайна. Сургууль тань зөвхөн ижил байвал л нөгөө хүнд харагдана.</p>
           </div>
 
           <div className="rules-box">

@@ -7,7 +7,6 @@ import {
   PARTNER_NAME,
   REACTIONS,
   REPORT_REASONS,
-  SCHOOLS,
   STICKERS,
 } from './constants.js';
 import { maskProfanity } from './profanity.js';
@@ -106,7 +105,6 @@ export function attachChat(io, { config, push, reports }) {
       socketId: null,
       gender: null,
       interests: [],
-      school: null,
       adultConfirmed: false,
       status: 'idle', // idle | queued | chatting
       roomId: null,
@@ -147,7 +145,6 @@ export function attachChat(io, { config, push, reports }) {
         roomId: room.id,
         startedAt: room.startedAt,
         sharedInterests: room.sharedInterests,
-        sharedSchool: room.sharedSchool,
         partner: { nickname: PARTNER_NAME, online: Boolean(partner?.socketId) },
         friend: {
           mine: room.friend[client.id] || null,
@@ -165,7 +162,7 @@ export function attachChat(io, { config, push, reports }) {
     if (client.status === 'queued') client.status = 'idle';
   }
 
-  const hasPrefs = (c) => c.interests.length > 0 || Boolean(c.school);
+  const hasPrefs = (c) => c.interests.length > 0;
   const isFlexible = (c, now) => !hasPrefs(c) || now - c.queuedAt >= config.interestWaitMs;
 
   const isBlocked = (a, b) => a.blocked.has(b.id) || b.blocked.has(a.id);
@@ -181,31 +178,27 @@ export function attachChat(io, { config, push, reports }) {
     let best = null;
     let bestShared = [];
     let bestScore = -1;
-    let bestSchool = null;
     for (const otherId of queues[opposite(client.gender)]) {
       const other = clients.get(otherId);
       if (!other || other.status !== 'queued' || !other.socketId) continue;
       if (isBlocked(client, other) || recentlyPaired(client, other, now)) continue;
       const shared = client.interests.filter((i) => other.interests.includes(i));
-      const sameSchool = client.school && client.school !== 'other' && client.school === other.school ? client.school : null;
-      // Нэг сургууль = 3 оноо, ижил сонирхол бүр = 1 оноо
-      const score = (sameSchool ? 3 : 0) + shared.length;
+      const score = shared.length;
       const allowed = score > 0 || (isFlexible(client, now) && isFlexible(other, now));
       if (!allowed) continue;
-      // Оноо өндрийг нь, тэнцвэл эрт хүлээсэн хүнийг (Set нь FIFO дараалалтай)
+      // Ижил сонирхол ихтэйг нь, тэнцвэл эрт хүлээсэн хүнийг (Set нь FIFO дараалалтай)
       if (score > bestScore) {
         best = other;
         bestShared = shared;
         bestScore = score;
-        bestSchool = sameSchool;
       }
     }
     if (!best) return false;
-    pair(client, best, bestShared, bestSchool);
+    pair(client, best, bestShared);
     return true;
   }
 
-  function pair(a, b, sharedInterests, sharedSchool = null) {
+  function pair(a, b, sharedInterests) {
     removeFromQueue(a);
     removeFromQueue(b);
     const now = Date.now();
@@ -215,7 +208,6 @@ export function attachChat(io, { config, push, reports }) {
       b: b.id,
       startedAt: now,
       sharedInterests,
-      sharedSchool,
       friend: {}, // clientId -> { platform, handle } — чат дуусахад устна
       friendRevealed: false,
     };
@@ -228,7 +220,6 @@ export function attachChat(io, { config, push, reports }) {
         roomId: room.id,
         startedAt: now,
         sharedInterests,
-        sharedSchool,
         partner: { nickname: PARTNER_NAME, online: true },
       });
       if (!me.visible) notifyPush(me, { title: 'noone', body: 'Хүн олдлоо — чат эхэллээ', tag: 'noone-match' });
@@ -267,11 +258,10 @@ export function attachChat(io, { config, push, reports }) {
     }
   }
 
-  function enqueue(client, { gender, interests, school }) {
+  function enqueue(client, { gender, interests }) {
     removeFromQueue(client);
     client.gender = gender;
     client.interests = interests;
-    client.school = school ?? null;
     client.status = 'queued';
     client.queuedAt = Date.now();
     client.phaseAnnounced = !hasPrefs(client);
@@ -410,9 +400,8 @@ export function attachChat(io, { config, push, reports }) {
       if (!lim.ok) return { ok: false, error: 'rate_limited', retryAfterMs: lim.retryAfterMs };
       const until = restrictedUntil(c);
       if (until) return { ok: false, error: 'restricted', retryAfterMs: until - Date.now() };
-      const school = SCHOOLS.includes(payload.school) ? payload.school : null;
       c.adultConfirmed = true;
-      enqueue(c, { gender, interests, school });
+      enqueue(c, { gender, interests });
       return { ok: true, status: c.status };
     });
 
@@ -520,7 +509,7 @@ export function attachChat(io, { config, push, reports }) {
       if (!lim.ok) return { ok: false, error: 'rate_limited', retryAfterMs: lim.retryAfterMs, endedRoomId };
       const until = restrictedUntil(c);
       if (until) return { ok: false, error: 'restricted', retryAfterMs: until - Date.now(), endedRoomId };
-      enqueue(c, { gender: c.gender, interests: c.interests, school: c.school });
+      enqueue(c, { gender: c.gender, interests: c.interests });
       return { ok: true, endedRoomId, status: c.status };
     });
 

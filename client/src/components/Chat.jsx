@@ -9,7 +9,6 @@ import {
   errorText,
   interestLabel,
   platformLabel,
-  schoolLabel,
 } from '../lib/constants.js';
 import { formatTime, snippet } from '../lib/format.js';
 import { pickIcebreaker } from '../lib/icebreakers.js';
@@ -909,24 +908,14 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         </div>
       </header>
 
-      {(room?.sharedInterests?.length > 0 || room?.sharedSchool) && (
+      {room?.sharedInterests?.length > 0 && (
         <div className="shared-bar">
-          {room.sharedSchool && (
-            <>
-              Нэг сургууль:
-              <span className="mini-chip school-chip">{schoolLabel(room.sharedSchool)}</span>
-            </>
-          )}
-          {room.sharedInterests?.length > 0 && (
-            <>
-              Ижил сонирхол:
-              {room.sharedInterests.map((i) => (
-                <span key={i} className="mini-chip">
-                  {interestLabel(i)}
-                </span>
-              ))}
-            </>
-          )}
+          Ижил сонирхол:
+          {room.sharedInterests.map((i) => (
+            <span key={i} className="mini-chip">
+              {interestLabel(i)}
+            </span>
+          ))}
         </div>
       )}
 

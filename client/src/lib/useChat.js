@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { createSocket, identity } from './socket.js';
-import { PARTNER_NAME, SPAM_LIMIT, errorText, interestLabel, platformLabel, schoolLabel } from './constants.js';
+import { PARTNER_NAME, SPAM_LIMIT, errorText, interestLabel, platformLabel } from './constants.js';
 
 let seq = 0;
 const sys = (text) => ({ id: `s_${Date.now()}_${(seq += 1)}`, system: true, text, ts: Date.now() });
@@ -26,18 +26,16 @@ const initialState = {
 };
 
 function matchNote(room) {
-  const parts = [];
-  if (room.sharedSchool) parts.push(`хоёулаа ${schoolLabel(room.sharedSchool)}-д сурдаг`);
-  if (room.sharedInterests?.length) parts.push(`${room.sharedInterests.map(interestLabel).join(', ')} сонирхдог`);
-  const common = parts.length ? ` Та хоёр ${parts.join(', ')}.` : '';
-  return sys(`Та нууц нэгэнтэй холбогдлоо.${common} Мэнд мэдээд эхлээрэй!`);
+  const shared = room.sharedInterests?.length
+    ? ` Та хоёр ${room.sharedInterests.map(interestLabel).join(', ')} сонирхдог.`
+    : '';
+  return sys(`Та нууц нэгэнтэй холбогдлоо.${shared} Мэнд мэдээд эхлээрэй!`);
 }
 
 const toRoom = (r) => ({
   roomId: r.roomId,
   startedAt: r.startedAt,
   sharedInterests: r.sharedInterests || [],
-  sharedSchool: r.sharedSchool || null,
   partner: { nickname: PARTNER_NAME, online: r.partner?.online !== false },
 });
 
@@ -172,7 +170,6 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       const res = await request('queue:join', {
         gender: profile.gender,
         interests: profile.interests,
-        school: profile.school || null,
         adultConfirmed: true,
       });
       if (!res.ok && stateRef.current.phase === 'searching') {

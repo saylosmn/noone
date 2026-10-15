@@ -7,12 +7,6 @@ export const REPORT_REASONS = ['spam', 'harassment', 'sexual', 'minor', 'hate', 
 // Хэрэглэгч нэр сонгохгүй — нөгөө хүнд үргэлж ингэж харагдана.
 export const PARTNER_NAME = 'Нууц нэгэн';
 
-// Сургууль (заавал биш) — ижил сургуулийнхныг түрүүлж холбоно
-export const SCHOOLS = [
-  'must', 'num', 'ufe', 'mnums', 'msue', 'muls',
-  'otgontenger', 'ikhzasag', 'mandakh', 'huree', 'ubis', 'other',
-];
-
 // Стикерүүдийн id (зураг нь клиент дээр)
 export const STICKERS = ['hi', 'haha', 'love', 'sad', 'wow', 'cool', 'sleepy', 'angry', 'think', 'thanks', 'gg', 'bye'];
 
