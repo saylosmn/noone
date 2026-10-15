@@ -9,7 +9,7 @@
 ```
 noone/
 ├── client/          React + Vite (Vercel)
-│   ├── public/sw.js Service worker (мэдэгдэл, Web Push)
+│   ├── public/sw.js Service worker (мэдэгдэл)
 │   └── src/         Дэлгэцүүд, socket логик
 ├── server/          Express + Socket.IO (Render)
 │   ├── src/chat.js  Matchmaking, чат, reply, typing, skip, block/report, rate limit
@@ -31,7 +31,6 @@ noone/
 | Өнгө | Хэрэглэгч бүр Тохиргоо (🎨) → гол өнгө (7) болон дэвсгэр (4) сонгоно. Зөвхөн тухайн төхөөрөмжид хадгалагдана |
 | Холболт | "Холбогдож байна…", тасрахад баннер + "Дахин холбогдох" товч. 20 сек дотор буцвал чат үргэлжилнэ, хуудас refresh хийсэн ч сэргэнэ |
 | Мэдэгдэл | Дуу, уншаагүй тоо (tab гарчиг + "N шинэ мессеж" товч), өөр tab дээр байхад browser notification ("Шинэ мессеж ирлээ" — агуулгагүй), дарахад чат руу буцна |
-| Web Push | Service worker + VAPID тохиргоо бэлэн. Түлхүүргүй бол Тохиргоо цонхонд ажиллахгүйг тодорхой бичнэ |
 
 ## Нууцлал
 
@@ -122,14 +121,6 @@ Matchmaking дараалал, идэвхтэй өрөө, блок жагсаал
 | Нэр | Тайлбар |
 |---|---|
 | `VITE_SERVER_URL` | Backend хаяг. Локалд хоосон (Vite proxy). Production-д `client/.env.production` |
-
-## Web Push идэвхжүүлэх (заавал биш)
-
-```bash
-cd server && npm run vapid
-```
-
-Гарсан `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`-г Render → Environment-д нэмээд дахин deploy хийнэ. Дараа нь хэрэглэгч Тохиргоо → "Web Push идэвхжүүлэх"-ийг асаана. Push бүртгэл зөвхөн тухайн сессийн хугацаанд санах ойд байна.
 
 ## Socket.IO event-үүд
 

@@ -4,7 +4,6 @@ import { useSettings } from './lib/useSettings.js';
 import { session } from './lib/storage.js';
 import { applyTheme } from './lib/theme.js';
 import {
-  getServiceWorker,
   notificationPermission,
   playPing,
   requestNotificationPermission,
@@ -12,7 +11,6 @@ import {
   showChatNotification,
   unlockAudio,
 } from './lib/notify.js';
-import { fetchPushConfig, getPushSubscription, pushSupported, subscribePush, unsubscribePush } from './lib/push.js';
 import { Landing } from './components/Landing.jsx';
 import { Searching } from './components/Searching.jsx';
 import { Chat } from './components/Chat.jsx';
@@ -51,13 +49,6 @@ export default function App() {
   const [unread, setUnread] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [slow, setSlow] = useState(false);
-  const [swStatus, setSwStatus] = useState(() =>
-    typeof navigator !== 'undefined' && 'serviceWorker' in navigator ? 'pending' : 'unsupported',
-  );
-  const [pushConfig, setPushConfig] = useState(null);
-  const [pushState, setPushState] = useState(() => (pushSupported() ? 'off' : 'unsupported'));
-  const pushConfigRef = useRef(null);
-  pushConfigRef.current = pushConfig;
 
   const isHidden = () => document.visibilityState === 'hidden';
 
@@ -75,20 +66,7 @@ export default function App() {
     }
   }, []);
 
-  // Шинэ сесс бүрт (сервер санахгүй тул) push бүртгэлийг дахин илгээнэ
-  const chatRef = useRef(null);
-  const onSession = useCallback(async () => {
-    if (!settingsRef.current.pushOptIn || notificationPermission() !== 'granted') return;
-    const cfg = pushConfigRef.current || (await fetchPushConfig());
-    if (!cfg.enabled) return;
-    const sub = await getPushSubscription(getServiceWorker());
-    if (!sub) return;
-    const res = await chatRef.current?.sendPushSubscription(sub.toJSON());
-    setPushState(res?.ok ? 'on' : 'error');
-  }, []);
-
-  const { state, actions } = useChat({ profileRef, onIncoming, onMatch, onToast: pushToast, onSession });
-  chatRef.current = actions;
+  const { state, actions } = useChat({ profileRef, onIncoming, onMatch, onToast: pushToast });
 
   // Таб-ын гарчигт уншаагүй тоо
   useEffect(() => {
@@ -121,29 +99,15 @@ export default function App() {
     return () => clearTimeout(t);
   }, [state.everConnected]);
 
-  // Service worker
+  // Service worker (мэдэгдэл дээр дарахад чат руу буцаахад ашиглана)
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator)) return undefined;
     let cancelled = false;
-    navigator.serviceWorker.ready
-      .then((reg) => {
-        if (cancelled) return;
-        setServiceWorker(reg);
-        setSwStatus('ready');
-      })
-      .catch(() => !cancelled && setSwStatus('error'));
-    const onError = () => setSwStatus('error');
-    window.addEventListener('noone:sw-error', onError);
-    if (window.__nooneSwError) setSwStatus('error');
+    navigator.serviceWorker.ready.then((reg) => !cancelled && setServiceWorker(reg)).catch(() => {});
     return () => {
       cancelled = true;
-      window.removeEventListener('noone:sw-error', onError);
     };
   }, []);
-
-  useEffect(() => {
-    if (state.everConnected && !pushConfig) fetchPushConfig().then(setPushConfig);
-  }, [state.everConnected, pushConfig]);
 
   const enableNotifications = useCallback(async () => {
     unlockAudio();
@@ -161,35 +125,6 @@ export default function App() {
   const testNotification = async () => {
     const ok = await showChatNotification('message');
     pushToast(ok ? 'Туршилтын мэдэгдэл илгээлээ.' : 'Мэдэгдэл харуулж чадсангүй.', ok ? 'success' : 'error');
-  };
-
-  const togglePush = async (on) => {
-    const reg = getServiceWorker();
-    if (!on) {
-      setPushState('working');
-      await unsubscribePush(reg);
-      await actions.removePushSubscription();
-      updateSettings({ pushOptIn: false });
-      setPushState('off');
-      return;
-    }
-    if (!pushConfig?.enabled || !reg) return;
-    if (permission !== 'granted') {
-      const p = await enableNotifications();
-      if (p !== 'granted') return;
-    }
-    setPushState('working');
-    try {
-      const sub = await subscribePush(reg, pushConfig.publicKey);
-      const res = await actions.sendPushSubscription(sub.toJSON());
-      if (!res.ok) throw new Error(res.error);
-      updateSettings({ pushOptIn: true });
-      setPushState('on');
-      pushToast('Web Push идэвхжлээ.', 'success');
-    } catch {
-      setPushState('error');
-      pushToast('Web Push бүртгэж чадсангүй.');
-    }
   };
 
   const start = () => {
@@ -258,10 +193,6 @@ export default function App() {
         permission={permission}
         onEnableNotifications={enableNotifications}
         onTestNotification={testNotification}
-        swStatus={swStatus}
-        pushConfig={pushConfig}
-        pushState={pushState}
-        onTogglePush={togglePush}
       />
     </div>
   );

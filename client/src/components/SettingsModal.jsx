@@ -30,13 +30,8 @@ export function SettingsModal({
   permission,
   onEnableNotifications,
   onTestNotification,
-  swStatus,
-  pushConfig,
-  pushState,
-  onTogglePush,
 }) {
   const perm = PERMISSION_TEXT[permission] || PERMISSION_TEXT.default;
-  const pushAvailable = pushConfig?.enabled && swStatus === 'ready' && pushState !== 'unsupported';
 
   return (
     <Modal open={open} onClose={onClose} title="Тохиргоо" size="lg">
@@ -134,43 +129,6 @@ export function SettingsModal({
           checked={settings.icebreakers}
           onChange={(v) => update({ icebreakers: v })}
         />
-      </section>
-
-      <section className="settings-section">
-        <h3>Web Push (tab хаалттай үед)</h3>
-        <div className="kv">
-          <span>Service worker</span>
-          <span className={`status-badge ${swStatus === 'ready' ? 'ok' : swStatus === 'pending' ? 'muted' : 'bad'}`}>
-            {{ ready: 'Бүртгэгдсэн', pending: 'Ачаалж байна', unsupported: 'Дэмжихгүй', error: 'Алдаа' }[swStatus]}
-          </span>
-        </div>
-        <div className="kv">
-          <span>Серверийн Push түлхүүр (VAPID)</span>
-          <span className={`status-badge ${pushConfig?.enabled ? 'ok' : 'bad'}`}>
-            {pushConfig ? (pushConfig.enabled ? 'Тохируулсан' : 'Байхгүй') : 'Шалгаж байна'}
-          </span>
-        </div>
-        {pushConfig && !pushConfig.enabled && (
-          <p className="callout warn">
-            <strong>Web Push одоогоор ажиллахгүй.</strong> Серверт VAPID түлхүүр (<code>VAPID_PUBLIC_KEY</code>,{' '}
-            <code>VAPID_PRIVATE_KEY</code>) тохируулаагүй тул tab хаалттай үед мэдэгдэл ирэхгүй. Tab нээлттэй үеийн
-            мэдэгдэл, дуу хэвийн ажиллана. Админ <code>npm run vapid</code> командаар түлхүүр үүсгэж серверийн орчны
-            хувьсагчид нэмнэ.
-          </p>
-        )}
-        {pushAvailable && (
-          <Toggle
-            label="Web Push идэвхжүүлэх"
-            description={
-              pushState === 'error'
-                ? 'Бүртгэл амжилтгүй боллоо. Дахин оролдоно уу.'
-                : 'Tab-аа нуусан ч “Шинэ мессеж ирлээ” мэдэгдэл ирнэ. Бүртгэл зөвхөн энэ сессийн хугацаанд санах ойд байна.'
-            }
-            checked={settings.pushOptIn && pushState === 'on'}
-            disabled={pushState === 'working' || permission === 'denied'}
-            onChange={onTogglePush}
-          />
-        )}
       </section>
 
       <section className="settings-section">
