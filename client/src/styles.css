@@ -1888,6 +1888,60 @@ code {
   text-decoration: none;
 }
 
+/* ---------- Апп суулгах ---------- */
+.install-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 10px 12px 12px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), color-mix(in srgb, var(--accent-alt) 10%, transparent));
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  animation: pop 0.2s ease-out;
+}
+.install-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.install-text {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.install-text strong {
+  color: var(--text);
+  font-size: 14.5px;
+}
+.install-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ios-steps {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+  color: var(--text);
+}
+.ios-steps .icon {
+  display: inline;
+  vertical-align: -2px;
+}
+@media (min-width: 900px) {
+  .install-card {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ---------- Шинэ хувилбар ---------- */
 .update-banner {
   position: sticky;

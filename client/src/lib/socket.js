@@ -1,5 +1,11 @@
 import { io } from 'socket.io-client';
-import { session } from './storage.js';
+import { local, session } from './storage.js';
+
+// Нүүр дэлгэцнээс (апп горимд) нээсэн бол апп хаагдаад дахин нээгдэхэд ч чат сэргэх ёстой
+const standalone =
+  typeof window !== 'undefined' &&
+  (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true);
+const idStore = standalone ? local : session;
 
 export const SERVER_URL = (import.meta.env.VITE_SERVER_URL || '').replace(/\/$/, '');
 
@@ -7,9 +13,9 @@ const IDENTITY_KEY = 'noone.identity';
 
 /** Tab бүрт тусдаа түр ID (sessionStorage). Бүртгэл, нэвтрэлт байхгүй. */
 export const identity = {
-  read: () => session.get(IDENTITY_KEY, null),
-  save: (clientId, resumeToken) => session.set(IDENTITY_KEY, { clientId, resumeToken }),
-  clear: () => session.remove(IDENTITY_KEY),
+  read: () => idStore.get(IDENTITY_KEY, null),
+  save: (clientId, resumeToken) => idStore.set(IDENTITY_KEY, { clientId, resumeToken }),
+  clear: () => idStore.remove(IDENTITY_KEY),
 };
 
 export function createSocket() {

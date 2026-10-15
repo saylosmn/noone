@@ -11,7 +11,7 @@ export function OnlinePill({ conn, online }) {
   );
 }
 
-export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettings }) {
+export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettings, installSlot }) {
   const [tried, setTried] = useState(false);
   const toggleInterest = (id) =>
     onProfile({
@@ -48,6 +48,7 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
       </header>
 
       <main className="landing-main">
+        {installSlot}
         <section className="hero">
           <p className="eyebrow">Бүртгэлгүй · Нэргүй · 18+</p>
           <h1>

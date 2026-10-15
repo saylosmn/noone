@@ -24,6 +24,10 @@ export function loadConfig(overrides = {}) {
     interestWaitMs: int(env.INTEREST_WAIT_MS, 6000),
     // Холболт тасарсны дараа чатыг хэр удаан хадгалах (дахин холбогдох боломж)
     reconnectGraceMs: int(env.RECONNECT_GRACE_MS, 20000),
+    // Push мэдэгдэлтэй хэрэглэгч апп-аа хаасан/нуусан үед чатыг хэр удаан хүлээх
+    pushGraceMs: int(env.PUSH_GRACE_MS, 5 * 60 * 1000),
+    // Нөгөө хүн түр гарсан үед хүргэгдээгүй мессежийг санах ойд хэдийг хүртэл барих
+    pendingMax: int(env.PENDING_MAX, 100),
     // Саяхан ярьсан хүнтэй дахин холбохгүй байх хугацаа
     rematchCooldownMs: int(env.REMATCH_COOLDOWN_MS, 15000),
     maxMessageLength: int(env.MAX_MESSAGE_LENGTH, 1000),

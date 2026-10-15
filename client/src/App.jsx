@@ -4,6 +4,8 @@ import { useSettings } from './lib/useSettings.js';
 import { session } from './lib/storage.js';
 import { applyTheme } from './lib/theme.js';
 import { useUpdateCheck } from './lib/useUpdateCheck.js';
+import { ensurePushSubscription, removePushSubscription } from './lib/push.js';
+import { InstallCard } from './components/InstallCard.jsx';
 import {
   notificationPermission,
   playPing,
@@ -68,7 +70,20 @@ export default function App() {
     }
   }, []);
 
-  const { state, actions } = useChat({ profileRef, onIncoming, onMatch, onToast: pushToast });
+  const syncPushRef = useRef(null);
+  const { state, actions } = useChat({ profileRef, onIncoming, onMatch, onToast: pushToast, onSession: () => syncPushRef.current?.() });
+
+  // Web Push: зөвшөөрөл өгсөн бол бүртгэлээ серверт өгнө (сервер дахин асах бүрт шинэчилнэ)
+  const syncPush = useCallback(async () => {
+    if (!settingsRef.current.notifications || notificationPermission() !== 'granted') return;
+    try {
+      const sub = await ensurePushSubscription();
+      if (sub) await actions.sendPushSubscription(sub);
+    } catch {
+      /* push дэмжихгүй / амжилтгүй — tab нээлттэй үеийн мэдэгдэл ажилласаар */
+    }
+  }, [actions]);
+  syncPushRef.current = syncPush;
   // Чатлаж / хайж байхад гэнэт refresh хийхгүй
   const updateReady = useUpdateCheck(state.phase === 'chatting' || state.phase === 'searching');
 
@@ -119,7 +134,9 @@ export default function App() {
     setPermission(result);
     if (result === 'granted') {
       updateSettings({ notifications: true });
+      settingsRef.current = { ...settingsRef.current, notifications: true };
       pushToast('Мэдэгдэл идэвхжлээ.', 'success');
+      syncPushRef.current?.();
     } else if (result === 'denied') {
       pushToast('Мэдэгдлийг хориглосон байна. Хөтчийн тохиргооноос зөвшөөрнө үү.');
     }
@@ -180,6 +197,7 @@ export default function App() {
         conn={state.conn}
         onStart={start}
         onOpenSettings={() => setSettingsOpen(true)}
+        installSlot={<InstallCard permission={permission} onEnableNotifications={enableNotifications} />}
       />
     );
   }
@@ -201,7 +219,17 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         settings={settings}
-        update={updateSettings}
+        update={(patch) => {
+          updateSettings(patch);
+          if ('notifications' in patch) {
+            settingsRef.current = { ...settingsRef.current, ...patch };
+            if (patch.notifications) syncPushRef.current?.();
+            else {
+              removePushSubscription();
+              actions.removePushSubscription();
+            }
+          }
+        }}
         permission={permission}
         onEnableNotifications={enableNotifications}
         onTestNotification={testNotification}

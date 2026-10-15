@@ -7,6 +7,8 @@ const PATHS = {
   ),
   close: <path d="M18 6 6 18M6 6l12 12" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
+  download: <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />,
+  share: <path d="M12 3v13M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />,
   smile: (
     <>
       <circle cx="12" cy="12" r="9" />

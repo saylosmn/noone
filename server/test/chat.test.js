@@ -17,7 +17,7 @@ before(async () => {
     rematchCooldownMs: 0,
     serveClient: false,
     clientOrigins: ['*'],
-    vapid: { publicKey: '', privateKey: '' },
+    pushGraceMs: 1500,
     limits: { connectPerMinute: 1000 },
   });
   const addr = await server.listen(0, '127.0.0.1');
@@ -312,8 +312,8 @@ test('health болон push config API', async () => {
   const health = await fetch(`${url}/api/health`).then((r) => r.json());
   assert.equal(health.ok, true);
   const push = await fetch(`${url}/api/push/config`).then((r) => r.json());
-  assert.equal(push.enabled, false);
-  assert.ok(push.reason.includes('VAPID'));
+  assert.equal(push.enabled, true); // түлхүүрийг сервер өөрөө үүсгэнэ
+  assert.ok(push.publicKey.length > 40);
   const admin = await fetch(`${url}/api/admin/reports`);
   assert.equal(admin.status, 404);
 });
@@ -426,4 +426,54 @@ test('keep-alive цагийн цонх (UB цагаар)', () => {
   assert.equal(inWindow(at(1), '8-2'), true);
   assert.equal(inWindow(at(4), '8-2'), false);
   assert.equal(inWindow(at(4), '0-0'), true);
+});
+
+test('push: апп хаалттай үед мессеж түр хадгалагдаж, push илгээгдээд, буцаж ороход хүргэгдэнэ', async () => {
+  const sent = [];
+  const origSend = server.push.send;
+  server.push.send = async (sub, payload) => {
+    sent.push(payload);
+    return 'sent';
+  };
+  try {
+    const { a, b } = await matchedPair();
+    const sub = { endpoint: 'https://fcm.googleapis.com/fcm/send/test123', keys: { p256dh: 'x'.repeat(80), auth: 'y'.repeat(20) } };
+    assert.equal((await emit(b, 'push:subscribe', { subscription: sub })).ok, true);
+    const auth = { clientId: b.session.clientId, resumeToken: b.session.resumeToken };
+    const offline = waitFor(a, 'chat:partner_status');
+    b.disconnect();
+    await offline;
+    const r1 = await emit(a, 'chat:message', { text: 'чи хаана байна?' });
+    const r2 = await emit(a, 'chat:message', { sticker: 'hi' });
+    assert.equal(r1.ok, true);
+    assert.equal(r2.ok, true);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].body, 'Шинэ мессеж ирлээ'); // агуулга орохгүй
+    assert.ok(!JSON.stringify(sent).includes('хаана'));
+
+    const b2 = await connect(auth);
+    assert.equal(b2.session.state.status, 'chatting');
+    const got = [];
+    await new Promise((resolve) => {
+      b2.on('chat:message', (m) => {
+        got.push(m);
+        if (got.length === 2) resolve();
+      });
+    });
+    assert.equal(got[0].text, 'чи хаана байна?');
+    assert.equal(got[1].sticker, 'hi');
+    const c = server.chat._internal.clients.get(b.session.clientId);
+    assert.equal(c.pending.length, 0);
+  } finally {
+    server.push.send = origSend;
+  }
+});
+
+test('push-гүй хэрэглэгч гарсан бол мессеж түр хадгалагдахгүй', async () => {
+  const { a, b } = await matchedPair();
+  const offline = waitFor(a, 'chat:partner_status');
+  b.disconnect();
+  await offline;
+  assert.equal((await emit(a, 'chat:message', { text: 'сайн уу' })).error, 'partner_offline');
 });

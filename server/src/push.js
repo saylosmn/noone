@@ -32,7 +32,15 @@ export function isValidSubscription(sub) {
 }
 
 export function createPush(config) {
-  const { publicKey, privateKey, subject } = config.vapid;
+  let { publicKey, privateKey } = config.vapid;
+  const { subject } = config.vapid;
+  let ephemeral = false;
+  // Түлхүүр тохируулаагүй бол сервер асах бүрт шинээр үүсгэнэ.
+  // Клиент түлхүүр өөрчлөгдсөнийг илрүүлж автоматаар дахин бүртгүүлдэг.
+  if ((!publicKey || !privateKey) && config.vapid.autoGenerate !== false) {
+    ({ publicKey, privateKey } = webpush.generateVAPIDKeys());
+    ephemeral = true;
+  }
   let enabled = Boolean(publicKey && privateKey);
   let reason = enabled ? '' : 'VAPID_PUBLIC_KEY болон VAPID_PRIVATE_KEY тохируулаагүй';
 
@@ -51,6 +59,7 @@ export function createPush(config) {
       return enabled;
     },
     reason,
+    ephemeral,
     publicKey: enabled ? publicKey : '',
     /**
      * Мессежийн агуулгыг хэзээ ч push-д оруулахгүй — зөвхөн ерөнхий текст.

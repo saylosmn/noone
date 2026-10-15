@@ -118,6 +118,7 @@ export function attachChat(io, { config, push, reports }) {
       last: null, // { roomId, partnerId, partnerIpHash, startedAt, endedAt, rated }
       visible: true,
       pushSub: null,
+      pending: [], // апп хаалттай үед ирсэн, хүргэгдээгүй мессежүүд (зөвхөн санах ойд, түр)
       lastPushAt: 0,
       lastTexts: [],
       disconnectTimer: null,
@@ -249,6 +250,7 @@ export function attachChat(io, { config, push, reports }) {
       me.status = 'idle';
       me.roomId = null;
       me.lastTexts = [];
+      me.pending = [];
       me.recent.set(otherId, now);
       me.last = {
         roomId: room.id,
@@ -285,10 +287,11 @@ export function attachChat(io, { config, push, reports }) {
     tryMatch(client);
   }
 
-  async function notifyPush(client, payload) {
+  async function notifyPush(client, payload, force = false) {
     if (!push.enabled || !client.pushSub) return;
     const now = Date.now();
-    if (now - client.lastPushAt < 8000) return;
+    if (!force && now - client.lastPushAt < 8000) return;
+    if (force && now - client.lastPushAt < 3000) return;
     client.lastPushAt = now;
     const result = await push.send(client.pushSub, payload);
     if (result === 'gone') client.pushSub = null;
@@ -377,6 +380,18 @@ export function attachChat(io, { config, push, reports }) {
       const partner = room && clients.get(room.a === client.id ? room.b : room.a);
       if (partner) emitTo(partner, 'chat:partner_status', { online: true });
     }
+    // Апп хаалттай байх үед ирсэн мессежүүдийг хүргээд санах ойгоос устгана
+    if (resumed && client.roomId && client.pending.length) {
+      const queued = client.pending.splice(0);
+      const sid = socket.id;
+      setTimeout(() => {
+        if (client.socketId !== sid) {
+          client.pending.unshift(...queued);
+          return;
+        }
+        for (const m of queued) socket.emit('chat:message', m);
+      }, 400);
+    }
 
     const current = () => (socket.data.clientId ? clients.get(socket.data.clientId) : null);
     const roomOf = (c) => (c?.roomId ? rooms.get(c.roomId) : null);
@@ -451,7 +466,8 @@ export function attachChat(io, { config, push, reports }) {
       }
 
       const partner = partnerOf(c, room);
-      if (!partner?.socketId) return { ok: false, error: 'partner_offline' };
+      const canBuffer = Boolean(partner && !partner.socketId && partner.pushSub && push.enabled);
+      if (!partner?.socketId && !canBuffer) return { ok: false, error: 'partner_offline' };
 
       c.lastTexts.push({ norm, ts: now });
       const message = {
@@ -460,8 +476,15 @@ export function attachChat(io, { config, push, reports }) {
         replyTo: MESSAGE_ID_RE.test(payload.replyTo || '') ? payload.replyTo : null,
         ...(sticker ? { sticker } : { text }),
       };
-      emitTo(partner, 'chat:message', message);
-      if (!partner.visible) notifyPush(partner, { title: 'noone', body: 'Шинэ мессеж ирлээ', tag: 'noone-message' });
+      if (canBuffer) {
+        // Апп хаалттай — буцаж ороход хүргэнэ, push мэдэгдэл илгээнэ
+        if (partner.pending.length >= config.pendingMax) return { ok: false, error: 'partner_offline' };
+        partner.pending.push(message);
+        notifyPush(partner, { title: 'noone', body: 'Шинэ мессеж ирлээ', tag: 'noone-message' }, true);
+      } else {
+        emitTo(partner, 'chat:message', message);
+        if (!partner.visible) notifyPush(partner, { title: 'noone', body: 'Шинэ мессеж ирлээ', tag: 'noone-message' });
+      }
       // Шүүгдсэн бол илгээгчид өөрт нь ч яг хүрсэн хэлбэрийг буцаана
       return { ok: true, id: message.id, ts: message.ts, ...(masked ? { text } : {}) };
     });
@@ -613,7 +636,8 @@ export function attachChat(io, { config, push, reports }) {
       const room = roomOf(c);
       if (room) emitTo(partnerOf(c, room), 'chat:partner_status', { online: false });
       // Тодорхой хугацаанд эргэж холбогдохгүй бол сесс болон чатыг устгана
-      c.disconnectTimer = setTimeout(() => deleteClient(c), config.reconnectGraceMs);
+      const grace = c.roomId && c.pushSub && push.enabled ? config.pushGraceMs : config.reconnectGraceMs;
+      c.disconnectTimer = setTimeout(() => deleteClient(c), grace);
     });
   });
 
