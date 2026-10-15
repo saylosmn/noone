@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { createSocket, identity } from './socket.js';
-import { PARTNER_NAME, SPAM_LIMIT, errorText, interestLabel } from './constants.js';
+import { PARTNER_NAME, SPAM_LIMIT, errorText, interestLabel, platformLabel, schoolLabel } from './constants.js';
 
 let seq = 0;
 const sys = (text) => ({ id: `s_${Date.now()}_${(seq += 1)}`, system: true, text, ts: Date.now() });
+
+const EMPTY_FRIEND = { mine: null, partnerOffered: false, partnerContact: null };
 
 const initialState = {
   conn: 'connecting', // connecting | online | offline
@@ -15,6 +17,7 @@ const initialState = {
   search: { phase: 'interest', since: 0 },
   room: null,
   messages: [],
+  friend: EMPTY_FRIEND,
   partnerTyping: false,
   ended: null,
   pendingRating: null,
@@ -23,11 +26,20 @@ const initialState = {
 };
 
 function matchNote(room) {
-  const shared = room.sharedInterests?.length
-    ? ` Та хоёр ${room.sharedInterests.map(interestLabel).join(', ')} сонирхдог.`
-    : '';
-  return sys(`Та нууц нэгэнтэй холбогдлоо.${shared} Мэнд мэдээд эхлээрэй!`);
+  const parts = [];
+  if (room.sharedSchool) parts.push(`хоёулаа ${schoolLabel(room.sharedSchool)}-д сурдаг`);
+  if (room.sharedInterests?.length) parts.push(`${room.sharedInterests.map(interestLabel).join(', ')} сонирхдог`);
+  const common = parts.length ? ` Та хоёр ${parts.join(', ')}.` : '';
+  return sys(`Та нууц нэгэнтэй холбогдлоо.${common} Мэнд мэдээд эхлээрэй!`);
 }
+
+const toRoom = (r) => ({
+  roomId: r.roomId,
+  startedAt: r.startedAt,
+  sharedInterests: r.sharedInterests || [],
+  sharedSchool: r.sharedSchool || null,
+  partner: { nickname: PARTNER_NAME, online: r.partner?.online !== false },
+});
 
 function reducer(state, a) {
   switch (a.type) {
@@ -46,6 +58,7 @@ function reducer(state, a) {
         search: { phase: a.searchPhase || 'interest', since: Date.now() },
         room: null,
         messages: [],
+        friend: EMPTY_FRIEND,
         partnerTyping: false,
         ended: null,
         pendingRating: a.pendingRating ?? null,
@@ -53,13 +66,14 @@ function reducer(state, a) {
     case 'search_status':
       return state.phase === 'searching' ? { ...state, search: { phase: a.phase, since: a.since } } : state;
     case 'idle':
-      return { ...state, phase: 'idle', room: null, messages: [], partnerTyping: false, ended: null, pendingRating: null };
+      return { ...state, phase: 'idle', room: null, messages: [], friend: EMPTY_FRIEND, partnerTyping: false, ended: null, pendingRating: null };
     case 'matched':
       return {
         ...state,
         phase: 'chatting',
         room: a.room,
         messages: [matchNote(a.room)],
+        friend: EMPTY_FRIEND,
         partnerTyping: false,
         ended: null,
         pendingRating: null,
@@ -70,6 +84,7 @@ function reducer(state, a) {
         phase: 'chatting',
         room: a.room,
         ended: null,
+        friend: a.friend || EMPTY_FRIEND,
         messages: a.keepMessages
           ? [...state.messages, sys('Холболт сэргэлээ. Чат үргэлжилж байна.')]
           : [sys('Чат сэргэлээ. Өмнөх мессежүүд хаана ч хадгалагддаггүй тул харагдахгүй.')],
@@ -87,6 +102,19 @@ function reducer(state, a) {
       return { ...state, messages: [...state.messages, a.message] };
     case 'update_message':
       return { ...state, messages: state.messages.map((m) => (m.id === a.id ? { ...m, ...a.patch } : m)) };
+    case 'reaction':
+      return {
+        ...state,
+        messages: state.messages.map((m) =>
+          m.id === a.messageId ? { ...m, reactions: { ...(m.reactions || {}), [a.who]: a.emoji } } : m,
+        ),
+      };
+    case 'friend':
+      return {
+        ...state,
+        friend: { ...state.friend, ...a.patch },
+        messages: a.note ? [...state.messages, a.note] : state.messages,
+      };
     case 'typing':
       return { ...state, partnerTyping: a.typing };
     case 'partner_status':
@@ -144,6 +172,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       const res = await request('queue:join', {
         gender: profile.gender,
         interests: profile.interests,
+        school: profile.school || null,
         adultConfirmed: true,
       });
       if (!res.ok && stateRef.current.phase === 'searching') {
@@ -175,7 +204,13 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       const srv = s.state || {};
       if (srv.status === 'chatting' && srv.room) {
         const same = cur.phase === 'chatting' && cur.room?.roomId === srv.room.roomId;
-        dispatch({ type: 'resumed', room: srv.room, keepMessages: same });
+        const f = srv.room.friend || {};
+        dispatch({
+          type: 'resumed',
+          room: toRoom(srv.room),
+          keepMessages: same,
+          friend: { mine: f.mine || null, partnerOffered: Boolean(f.partnerOffered), partnerContact: f.partnerContact || null },
+        });
       } else if (cur.phase === 'chatting') {
         dispatch({ type: 'ended', reason: 'connection_lost' });
       } else if (cur.phase === 'searching' && profileRef.current?.gender) {
@@ -195,12 +230,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     socket.on('match:found', (m) => {
       dispatch({
         type: 'matched',
-        room: {
-          roomId: m.roomId,
-          startedAt: m.startedAt,
-          sharedInterests: m.sharedInterests || [],
-          partner: { nickname: PARTNER_NAME, online: m.partner?.online !== false },
-        },
+        room: toRoom(m),
       });
       cbRef.current.onMatch?.(m);
     });
@@ -211,7 +241,15 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       dispatch({ type: 'typing', typing: false });
       dispatch({
         type: 'add_message',
-        message: { id: m.id, text: m.text, ts: m.ts, replyTo: m.replyTo || null, mine: false, status: 'received' },
+        message: {
+          id: m.id,
+          text: m.text ?? '',
+          sticker: m.sticker || null,
+          ts: m.ts,
+          replyTo: m.replyTo || null,
+          mine: false,
+          status: 'received',
+        },
       });
       cbRef.current.onIncoming?.(m);
     });
@@ -220,6 +258,29 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       clearTimeout(typingTimer.current);
       dispatch({ type: 'typing', typing: Boolean(typing) });
       if (typing) typingTimer.current = setTimeout(() => dispatch({ type: 'typing', typing: false }), 5000);
+    });
+
+    socket.on('chat:reaction', ({ messageId, emoji }) => {
+      dispatch({ type: 'reaction', messageId, who: 'theirs', emoji: emoji || null });
+    });
+
+    socket.on('friend:requested', () => {
+      if (stateRef.current.phase !== 'chatting') return;
+      dispatch({
+        type: 'friend',
+        patch: { partnerOffered: true },
+        note: sys('Нууц нэгэн найз болох хүсэлт илгээлээ. Та ч бас зөвшөөрвөл хаягаа солилцоно.'),
+      });
+      cbRef.current.onIncoming?.({});
+    });
+    socket.on('friend:cancelled', () => dispatch({ type: 'friend', patch: { partnerOffered: false } }));
+    socket.on('friend:reveal', ({ contact }) => {
+      dispatch({
+        type: 'friend',
+        patch: { partnerOffered: true, partnerContact: contact },
+        note: { ...sys(''), contact },
+      });
+      cbRef.current.onIncoming?.({});
     });
 
     socket.on('chat:partner_status', ({ online }) => dispatch({ type: 'partner_status', online }));
@@ -295,17 +356,19 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
   }, [startCooldown]);
 
   const sendMessage = useCallback(
-    async (text, replyTo = null) => {
-      const clean = text.trim();
-      if (!clean || stateRef.current.phase !== 'chatting') return false;
+    async (text, replyTo = null, sticker = null) => {
+      const clean = sticker ? '' : text.trim();
+      if ((!clean && !sticker) || stateRef.current.phase !== 'chatting') return false;
       const tempId = `tmp_${Date.now()}_${(seq += 1)}`;
       dispatch({
         type: 'add_message',
-        message: { id: tempId, text: clean, ts: Date.now(), replyTo, mine: true, status: 'sending' },
+        message: { id: tempId, text: clean, sticker, ts: Date.now(), replyTo, mine: true, status: 'sending' },
       });
-      const res = await request('chat:message', { text: clean, replyTo });
+      const res = await request('chat:message', sticker ? { sticker, replyTo } : { text: clean, replyTo });
       if (res.ok) {
-        dispatch({ type: 'update_message', id: tempId, patch: { id: res.id, ts: res.ts, status: 'sent' } });
+        const patch = { id: res.id, ts: res.ts, status: 'sent' };
+        if (res.text) patch.text = res.text; // хараалын үг шүүгдсэн хэлбэр
+        dispatch({ type: 'update_message', id: tempId, patch });
         return true;
       }
       dispatch({ type: 'update_message', id: tempId, patch: { status: 'failed', error: res.error } });
@@ -322,9 +385,12 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       if (!msg || msg.status !== 'failed') return;
       if (!takeSendToken()) return;
       dispatch({ type: 'update_message', id, patch: { status: 'sending', error: null } });
-      const res = await request('chat:message', { text: msg.text, replyTo: msg.replyTo });
+      const res = await request(
+        'chat:message',
+        msg.sticker ? { sticker: msg.sticker, replyTo: msg.replyTo } : { text: msg.text, replyTo: msg.replyTo },
+      );
       if (res.ok) {
-        dispatch({ type: 'update_message', id, patch: { id: res.id, ts: res.ts, status: 'sent' } });
+        dispatch({ type: 'update_message', id, patch: { id: res.id, ts: res.ts, status: 'sent', ...(res.text ? { text: res.text } : {}) } });
       } else {
         dispatch({ type: 'update_message', id, patch: { status: 'failed', error: res.error } });
         if (res.error === 'rate_limited') startCooldown(res.retryAfterMs);
@@ -333,6 +399,53 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     },
     [request, takeSendToken, startCooldown],
   );
+
+  const react = useCallback(
+    async (messageId, emoji) => {
+      const msg = stateRef.current.messages.find((m) => m.id === messageId);
+      if (!msg || msg.system || stateRef.current.phase !== 'chatting') return;
+      const next = msg.reactions?.mine === emoji ? null : emoji; // дахин дарвал арилна
+      dispatch({ type: 'reaction', messageId, who: 'mine', emoji: next });
+      const res = await request('chat:react', { messageId, emoji: next });
+      if (!res.ok) {
+        dispatch({ type: 'reaction', messageId, who: 'mine', emoji: msg.reactions?.mine || null });
+        if (res.error !== 'rate_limited') toast(errorText(res.error));
+      }
+    },
+    [request],
+  );
+
+  const offerFriend = useCallback(
+    async (platform, handle) => {
+      const res = await request('friend:offer', { platform, handle });
+      if (!res.ok) {
+        toast(errorText(res.error));
+        return res;
+      }
+      const mine = { platform, handle: handle.trim() };
+      if (res.status === 'revealed') {
+        dispatch({
+          type: 'friend',
+          patch: { mine, partnerOffered: true, partnerContact: res.contact },
+          note: { ...sys(''), contact: res.contact },
+        });
+      } else {
+        dispatch({
+          type: 'friend',
+          patch: { mine },
+          note: sys(`Найз болох хүсэлт илгээлээ (${platformLabel(platform)}). Нөгөө хүн зөвшөөрвөл хаягаа солилцоно.`),
+        });
+      }
+      return res;
+    },
+    [request],
+  );
+
+  const cancelFriend = useCallback(async () => {
+    const res = await request('friend:cancel');
+    if (res.ok) dispatch({ type: 'friend', patch: { mine: null }, note: sys('Найз болох хүсэлтээ цуцаллаа.') });
+    return res;
+  }, [request]);
 
   const setTyping = useCallback((typing) => {
     const socket = socketRef.current;
@@ -411,6 +524,9 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       next,
       sendMessage,
       takeSendToken,
+      react,
+      offerFriend,
+      cancelFriend,
       retryMessage,
       setTyping,
       leave,

@@ -18,12 +18,17 @@ services:
         value: "true"
       # Frontend (Vercel) хаяг(ууд), таслалаар. Custom домэйн нэмбэл энд нэмнэ.
       - key: CLIENT_ORIGIN
-        value: https://noone.vercel.app,http://localhost:5173
+        value: https://noone-ten.vercel.app,http://localhost:5173
       # Vercel-ийн preview хаягуудыг (*.vercel.app) зөвшөөрөх
       - key: ALLOW_VERCEL_PREVIEWS
         value: "true"
       - key: SERVE_CLIENT
         value: "false"
+      # Унтахаас сэргийлэх: UB цагаар 08:00–02:00 хооронд 10 мин тутам өөр рүүгээ ping хийнэ
+      - key: KEEP_ALIVE
+        value: "true"
+      - key: KEEP_ALIVE_HOURS
+        value: "8-2"
       - key: REPORT_HASH_SALT
         generateValue: true
       - key: ADMIN_TOKEN

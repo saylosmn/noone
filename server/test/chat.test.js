@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { io as ioClient } from 'socket.io-client';
 import { createApp } from '../src/app.js';
 import { sanitizeText } from '../src/chat.js';
+import { maskProfanity } from '../src/profanity.js';
+import { inWindow } from '../src/keepalive.js';
 
 let server;
 let url;
@@ -67,8 +69,8 @@ async function connect(auth = {}) {
   return socket;
 }
 
-async function join(socket, gender, interests = []) {
-  const res = await emit(socket, 'queue:join', { gender, interests, adultConfirmed: true });
+async function join(socket, gender, interests = [], school = null) {
+  const res = await emit(socket, 'queue:join', { gender, interests, school, adultConfirmed: true });
   assert.equal(res.ok, true, `queue:join амжилтгүй: ${res.error}`);
   return res;
 }
@@ -314,4 +316,95 @@ test('health болон push config API', async () => {
   assert.ok(push.reason.includes('VAPID'));
   const admin = await fetch(`${url}/api/admin/reports`);
   assert.equal(admin.status, 404);
+});
+
+test('нэг сургуулийнхныг ижил сонирхлоос ч түрүүлж холбоно', async () => {
+  const interestFan = await connect();
+  const schoolmate = await connect();
+  await join(interestFan, 'male', ['music', 'tech']);
+  await join(schoolmate, 'male', [], 'must');
+  const f = await connect();
+  const found = waitFor(f, 'match:found');
+  const mateFound = waitFor(schoolmate, 'match:found');
+  await join(f, 'female', ['music'], 'must');
+  const match = await found;
+  assert.equal((await mateFound).roomId, match.roomId);
+  assert.equal(match.sharedSchool, 'must');
+  const bad = await connect();
+  const r = await emit(bad, 'queue:join', { gender: 'male', school: 'hack', adultConfirmed: true });
+  assert.equal(r.ok, true); // буруу сургууль үл тоогдоно
+});
+
+test('стикер илгээх, буруу стикер татгалзах', async () => {
+  const { a, b } = await matchedPair();
+  const incoming = waitFor(b, 'chat:message');
+  const r = await emit(a, 'chat:message', { sticker: 'haha' });
+  assert.equal(r.ok, true);
+  const msg = await incoming;
+  assert.equal(msg.sticker, 'haha');
+  assert.equal(msg.text, undefined);
+  const bad = await emit(a, 'chat:message', { sticker: 'evil' });
+  assert.equal(bad.error, 'invalid');
+});
+
+test('хараалын үг "***" болж хүрнэ, илгээгчид ч буцаана', async () => {
+  const { a, b } = await matchedPair();
+  const incoming = waitFor(b, 'chat:message');
+  const r = await emit(a, 'chat:message', { text: 'fuck чи новш' });
+  assert.equal((await incoming).text, 'f*** чи н***');
+  assert.equal(r.text, 'f*** чи н***');
+  const clean = await emit(a, 'chat:message', { text: 'Сайн байна уу' });
+  assert.equal(clean.text, undefined);
+  assert.equal(maskProfanity('Dickens сайн').text, 'Dickens сайн');
+});
+
+test('reaction нөгөө хүнд дамжина', async () => {
+  const { a, b } = await matchedPair();
+  const sent = await emit(a, 'chat:message', { text: 'хаха' });
+  const reaction = waitFor(a, 'chat:reaction');
+  const r = await emit(b, 'chat:react', { messageId: sent.id, emoji: '😂' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(await reaction, { messageId: sent.id, emoji: '😂' });
+  const removed = waitFor(a, 'chat:reaction');
+  await emit(b, 'chat:react', { messageId: sent.id, emoji: null });
+  assert.equal((await removed).emoji, null);
+  assert.equal((await emit(b, 'chat:react', { messageId: sent.id, emoji: '💩' })).error, 'invalid');
+});
+
+test('найз болох: хоёулаа зөвшөөрсөн үед л хаягаа солилцоно', async () => {
+  const { a, b } = await matchedPair();
+  const requested = waitFor(b, 'friend:requested');
+  const r1 = await emit(a, 'friend:offer', { platform: 'instagram', handle: ' @boldoo_01 ' });
+  assert.equal(r1.status, 'waiting');
+  assert.equal(r1.contact, undefined);
+  const req = await requested;
+  assert.deepEqual(req, {}); // хаяг нь ил гарахгүй
+  const invalid = await emit(b, 'friend:offer', { platform: 'phone', handle: '99112233' });
+  assert.equal(invalid.error, 'invalid_platform');
+
+  const revealA = waitFor(a, 'friend:reveal');
+  const r2 = await emit(b, 'friend:offer', { platform: 'telegram', handle: 'saraa' });
+  assert.equal(r2.status, 'revealed');
+  assert.deepEqual(r2.contact, { platform: 'instagram', handle: '@boldoo_01' });
+  assert.deepEqual((await revealA).contact, { platform: 'telegram', handle: 'saraa' });
+  assert.equal((await emit(a, 'friend:cancel')).error, 'not_allowed');
+});
+
+test('найз болох хүсэлтийг цуцалж болно, чат дуусахад устна', async () => {
+  const { a, b, ma } = await matchedPair();
+  await emit(a, 'friend:offer', { platform: 'discord', handle: 'bat#1234' });
+  const cancelled = waitFor(b, 'friend:cancelled');
+  assert.equal((await emit(a, 'friend:cancel')).ok, true);
+  await cancelled;
+  await emit(a, 'friend:offer', { platform: 'discord', handle: 'bat#1234' });
+  await emit(a, 'chat:leave');
+  assert.equal(server.chat._internal.rooms.has(ma.roomId), false);
+});
+
+test('keep-alive цагийн цонх (UB цагаар)', () => {
+  const at = (ubHour) => new Date(Date.UTC(2026, 0, 1, (ubHour - 8 + 24) % 24));
+  assert.equal(inWindow(at(9), '8-2'), true);
+  assert.equal(inWindow(at(1), '8-2'), true);
+  assert.equal(inWindow(at(4), '8-2'), false);
+  assert.equal(inWindow(at(4), '0-0'), true);
 });

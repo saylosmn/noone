@@ -29,6 +29,11 @@ noone/
 | Үнэлгээ | Чат дууссаны дараа сайн/муу (заавал биш) |
 | Аюулгүй байдал | Блоклох (дахин холбохгүй), Мэдээлэх (шалтгаан сонгуулна, бичвэр хадгалахгүй), спамын хязгаар (10-аас олон мессеж хурдан бичвэл «Түр хүлээнэ үү» 3 сек), давтагдсан мессеж, олон мэдээлэл авсан IP-г түр хязгаарлах |
 | Өнгө | Хэрэглэгч бүр Тохиргоо (🎨) → гол өнгө (7) болон дэвсгэр (4) сонгоно. Зөвхөн тухайн төхөөрөмжид хадгалагдана |
+| Найз болох | Хоёулаа «Найз болох» дарж сошиал хаягаа (Instagram, Telegram, Facebook, Snapchat, Discord, Steam) оруулсан үед л бие биеийнхээ хаягийг харна. Нэг нь л зөвшөөрвөл юу ч ил гарахгүй. Хаяг зөвхөн өрөөний санах ойд, чат дуусахад устна |
+| Reaction, стикер | Мессеж дээр ❤️ 😂 👍 😮 😢 🔥 (desktop: 😊+ товч, утас: удаан дарах). noone-ийн өөрийн 12 стикер |
+| Сургууль | ШУТИС, МУИС, СЭЗИС… сонговол нэг сургуулийнхныг хамгийн түрүүнд холбоно (3 оноо, сонирхол 1 оноо). Ижил байвал л харагдана |
+| Хараалын шүүлтүүр | Монгол (кирилл/латин), орос үгс, англи хараалыг серверт «f***» хэлбэрт оруулна (`server/src/profanity.js`) |
+| Унтахгүй | Render дээр UB цагаар 08:00–02:00 хооронд сервер 10 мин тутам өөр рүүгээ ping хийж сэрүүн байна (`KEEP_ALIVE_HOURS`) |
 | Холболт | "Холбогдож байна…", тасрахад баннер + "Дахин холбогдох" товч. 20 сек дотор буцвал чат үргэлжилнэ, хуудас refresh хийсэн ч сэргэнэ |
 | Мэдэгдэл | Дуу, уншаагүй тоо (tab гарчиг + "N шинэ мессеж" товч), өөр tab дээр байхад browser notification ("Шинэ мессеж ирлээ" — агуулгагүй), дарахад чат руу буцна |
 
@@ -114,6 +119,7 @@ Matchmaking дараалал, идэвхтэй өрөө, блок жагсаал
 | `REPORT_HASH_SALT` | санамсаргүй | ID/IP hash-ийн давс |
 | `REPORT_BAN_THRESHOLD` / `REPORT_BAN_MS` | `3` / `900000` | 1 цагт 3 өөр хүн мэдээлбэл 15 мин хязгаарлана |
 | `ADMIN_TOKEN` | хоосон | `GET /api/admin/reports` (`Authorization: Bearer …`) |
+| `KEEP_ALIVE` / `KEEP_ALIVE_HOURS` | `true` / `8-2` | Render-ийн `RENDER_EXTERNAL_URL` руу 10 мин тутам ping. UB цагаар 08:00–02:00 (≈560 цаг/сар). `0-0` = үргэлж (≈744 цаг) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | хоосон | Web Push. `npm run vapid --prefix server` |
 
 ### client (`client/.env.example`)
@@ -129,7 +135,9 @@ Matchmaking дараалал, идэвхтэй өрөө, блок жагсаал
 | `queue:join {gender, interests, adultConfirmed}` | `session`, `stats` |
 | `queue:leave` | `queue:status {phase}` |
 | `chat:message {text, replyTo}` → ack `{id, ts}` | `match:found` |
-| `chat:typing {typing}` | `chat:message {id, text, ts, replyTo}` |
+| `chat:typing {typing}` | `chat:message {id, text \| sticker, ts, replyTo}` |
+| `chat:react {messageId, emoji}` | `chat:reaction {messageId, emoji}` |
+| `friend:offer {platform, handle}`, `friend:cancel` | `friend:requested`, `friend:reveal {contact}`, `friend:cancelled` |
 | `chat:next`, `chat:leave` | `chat:typing` |
 | `chat:block`, `chat:report {reason}` | `chat:partner_status {online}` |
 | `chat:rate {roomId, rating}` | `chat:ended {reason}` |

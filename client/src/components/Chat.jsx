@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ENDED_TEXT, MAX_MESSAGE_LENGTH, PARTNER_NAME, REPORT_REASONS, errorText, interestLabel } from '../lib/constants.js';
+import {
+  CONTACT_PLATFORMS,
+  ENDED_TEXT,
+  MAX_MESSAGE_LENGTH,
+  PARTNER_NAME,
+  REACTIONS,
+  REPORT_REASONS,
+  errorText,
+  interestLabel,
+  platformLabel,
+  schoolLabel,
+} from '../lib/constants.js';
 import { formatTime, snippet } from '../lib/format.js';
 import { pickIcebreaker } from '../lib/icebreakers.js';
 import { Icon } from './Icon.jsx';
 import { ConfirmDialog, Modal } from './Modal.jsx';
 import { RatingCard } from './Feedback.jsx';
+import { STICKERS, Sticker, stickerLabel } from './Sticker.jsx';
 
 const isCoarse = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
@@ -81,15 +93,103 @@ function Menu({ items }) {
 }
 
 // ---------------- Мессеж ----------------
-function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grouped, highlighted }) {
+const previewText = (m) => (m.sticker ? `Стикер · ${stickerLabel(m.sticker)}` : snippet(m.text, 80));
+
+function ContactCard({ contact }) {
+  const [copied, setCopied] = useState(false);
+  const platform = CONTACT_PLATFORMS.find((p) => p.id === contact.platform);
+  const link = platform?.url?.(contact.handle);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(contact.handle);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <div className="contact-card" role="note">
+      <div className="contact-title">
+        <Icon name="heartHand" size={18} /> Та хоёр найз боллоо!
+      </div>
+      <p className="contact-sub">Нууц нэгний хаяг:</p>
+      <div className="contact-row">
+        <span className="contact-platform">{platformLabel(contact.platform)}</span>
+        <span className="contact-handle">{contact.handle}</span>
+      </div>
+      <div className="contact-actions">
+        <button type="button" className="btn sm ghost" onClick={copy}>
+          <Icon name={copied ? 'check' : 'copy'} size={16} /> {copied ? 'Хуулагдлаа' : 'Хуулах'}
+        </button>
+        {link && (
+          <a className="btn sm primary" href={link} target="_blank" rel="noopener noreferrer">
+            <Icon name="external" size={16} /> Нээх
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReactionPicker({ current, onPick, onClose, side }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target)) onClose();
+    };
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    ref.current?.querySelector('button')?.focus();
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+  return (
+    <div className={`reaction-picker ${side}`} ref={ref} role="menu" aria-label="Reaction сонгох">
+      {REACTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          role="menuitem"
+          className={`reaction-option ${current === emoji ? 'is-active' : ''}`}
+          aria-label={`${emoji} reaction`}
+          onClick={() => {
+            onPick(emoji);
+            onClose();
+          }}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRetry, grouped, highlighted }) {
   const rowRef = useRef(null);
   const touch = useRef(null);
-  const canReply = Boolean(onReply) && !message.system && message.status !== 'sending' && message.status !== 'failed';
+  const pressTimer = useRef(null);
+  const [picker, setPicker] = useState(false);
+  const live = !message.system && message.status !== 'sending' && message.status !== 'failed';
+  const canReply = Boolean(onReply) && live;
+  const canReact = Boolean(onReact) && live && !message.id.startsWith('tmp_');
 
+  const clearPress = () => clearTimeout(pressTimer.current);
   const onTouchStart = (e) => {
-    if (!canReply) return;
+    if (!canReply && !canReact) return;
     const t = e.touches[0];
     touch.current = { x: t.clientX, y: t.clientY, dx: 0, locked: false };
+    // Удаан дарахад reaction сонгогч гарна
+    if (canReact) {
+      pressTimer.current = setTimeout(() => {
+        touch.current = null;
+        navigator.vibrate?.(15);
+        setPicker(true);
+      }, 480);
+    }
   };
   const onTouchMove = (e) => {
     const s = touch.current;
@@ -97,6 +197,8 @@ function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grou
     const t = e.touches[0];
     const dx = t.clientX - s.x;
     const dy = t.clientY - s.y;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearPress();
+    if (!canReply) return;
     if (!s.locked && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) {
       touch.current = null;
       if (rowRef.current) rowRef.current.style.transform = '';
@@ -107,15 +209,18 @@ function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grou
     if (rowRef.current) rowRef.current.style.transform = `translateX(${s.dx}px)`;
   };
   const onTouchEnd = () => {
+    clearPress();
     const s = touch.current;
     touch.current = null;
     if (rowRef.current) rowRef.current.style.transform = '';
-    if (s && s.dx > 56) {
+    if (s && s.dx > 56 && canReply) {
       navigator.vibrate?.(10);
       onReply(message);
     }
   };
+  useEffect(() => clearPress, []);
 
+  if (message.contact) return <ContactCard contact={message.contact} />;
   if (message.system) {
     return (
       <div className="system-note" role="note">
@@ -125,17 +230,24 @@ function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grou
   }
 
   const quoteAuthor = original ? (original.mine ? 'Та' : partnerName) : '';
+  const reactions = message.reactions || {};
+  const shown = [reactions.theirs, reactions.mine].filter(Boolean);
+  const isSticker = Boolean(message.sticker);
   return (
     <div
       id={`msg-${message.id}`}
       ref={rowRef}
-      className={`msg-row ${message.mine ? 'mine' : 'theirs'} ${grouped ? 'grouped' : ''} ${highlighted ? 'is-flash' : ''}`}
+      className={`msg-row ${message.mine ? 'mine' : 'theirs'} ${grouped ? 'grouped' : ''} ${highlighted ? 'is-flash' : ''} ${shown.length ? 'has-reactions' : ''}`}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+      onContextMenu={(e) => {
+        if (canReact && e.nativeEvent.pointerType !== 'mouse' && isCoarse()) e.preventDefault();
+      }}
     >
       <div
-        className={`bubble ${message.status === 'failed' ? 'is-failed' : ''}`}
+        className={`bubble ${isSticker ? 'is-sticker' : ''} ${message.status === 'failed' ? 'is-failed' : ''}`}
         onDoubleClick={(e) => {
           if (!canReply || e.target.closest('.quote')) return;
           window.getSelection?.()?.removeAllRanges();
@@ -149,24 +261,63 @@ function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grou
             className="quote"
             onClick={() => original && onJump(message.replyTo)}
             disabled={!original}
-            aria-label={original ? `Эх мессеж рүү очих: ${snippet(original.text, 40)}` : 'Эх мессеж олдсонгүй'}
+            aria-label={original ? `Эх мессеж рүү очих: ${previewText(original)}` : 'Эх мессеж олдсонгүй'}
           >
             <span className="quote-author">{quoteAuthor || 'Хариулт'}</span>
-            <span className="quote-text">{original ? snippet(original.text, 80) : 'Эх мессеж олдсонгүй'}</span>
+            <span className="quote-text">{original ? previewText(original) : 'Эх мессеж олдсонгүй'}</span>
           </button>
         )}
-        <p className="msg-text">{message.text}</p>
+        {isSticker ? <Sticker id={message.sticker} size={118} /> : <p className="msg-text">{message.text}</p>}
         <span className="msg-meta">
           {formatTime(message.ts)}
           {message.mine && message.status === 'sending' && <Icon name="clock" size={12} />}
           {message.mine && message.status === 'sent' && <Icon name="check" size={12} strokeWidth={3} />}
           {message.status === 'failed' && <Icon name="alert" size={12} />}
         </span>
+        {shown.length > 0 && (
+          <button
+            type="button"
+            className="reaction-badge"
+            onClick={() => canReact && setPicker(true)}
+            aria-label={`Reaction: ${shown.join(' ')}`}
+          >
+            {reactions.theirs === reactions.mine && reactions.mine ? (
+              <>
+                {reactions.mine}
+                <span className="reaction-count">2</span>
+              </>
+            ) : (
+              shown.map((r, i) => <span key={`${r}${i}`}>{r}</span>)
+            )}
+          </button>
+        )}
       </div>
-      {canReply && (
-        <button type="button" className="reply-btn" aria-label="Хариулах" title="Хариулах" onClick={() => onReply(message)}>
-          <Icon name="reply" size={16} />
-        </button>
+      <div className="msg-actions">
+        {canReact && (
+          <button
+            type="button"
+            className="reply-btn react-btn"
+            aria-label="Reaction үлдээх"
+            title="Reaction"
+            aria-expanded={picker}
+            onClick={() => setPicker((p) => !p)}
+          >
+            <Icon name="smilePlus" size={16} />
+          </button>
+        )}
+        {canReply && (
+          <button type="button" className="reply-btn" aria-label="Хариулах" title="Хариулах" onClick={() => onReply(message)}>
+            <Icon name="reply" size={16} />
+          </button>
+        )}
+      </div>
+      {picker && (
+        <ReactionPicker
+          current={reactions.mine}
+          side={message.mine ? 'right' : 'left'}
+          onPick={(emoji) => onReact(message.id, emoji)}
+          onClose={() => setPicker(false)}
+        />
       )}
       {message.status === 'failed' && (
         <button type="button" className="retry-btn" onClick={() => onRetry(message.id)}>
@@ -189,7 +340,7 @@ function TypingBubble() {
   );
 }
 
-function MessageList({ messages, partnerTyping, partnerName, onReply, onRetry, jumpRef, footer }) {
+function MessageList({ messages, partnerTyping, partnerName, onReply, onReact, onRetry, jumpRef, footer }) {
   const listRef = useRef(null);
   const atBottomRef = useRef(true);
   const [newCount, setNewCount] = useState(0);
@@ -260,6 +411,7 @@ function MessageList({ messages, partnerTyping, partnerName, onReply, onRetry, j
                 original={m.replyTo ? byId.get(m.replyTo) : null}
                 partnerName={partnerName}
                 onReply={onReply}
+                onReact={onReact}
                 onJump={jumpTo}
                 onRetry={onRetry}
                 grouped={grouped}
@@ -281,7 +433,34 @@ function MessageList({ messages, partnerTyping, partnerName, onReply, onRetry, j
 }
 
 // ---------------- Бичих хэсэг ----------------
-function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onCancelReply, onJumpReply, inputRef, disabled, partnerOnline, cooldownMs }) {
+function StickerPanel({ onPick, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="sticker-panel" ref={ref} role="dialog" aria-label="Стикер сонгох">
+      <div className="sticker-panel-head">
+        <span>Стикер</span>
+        <button type="button" className="icon-btn sm" aria-label="Стикер хаах" onClick={onClose}>
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+      <div className="sticker-grid">
+        {STICKERS.map((st) => (
+          <button key={st.id} type="button" className="sticker-option" aria-label={`Стикер: ${st.label}`} onClick={() => onPick(st.id)}>
+            <Sticker id={st.id} size={64} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Composer({ draft, setDraft, onSend, onSendSticker, onTyping, replyTo, replyAuthor, onCancelReply, onJumpReply, inputRef, disabled, partnerOnline, cooldownMs }) {
+  const [stickersOpen, setStickersOpen] = useState(false);
   const typingRef = useRef(false);
   const typingTimer = useRef(null);
   const composing = useRef(false);
@@ -360,13 +539,21 @@ function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onC
             <Icon name="reply" size={16} />
             <span className="rp-content">
               <span className="rp-label">Хариулж байна · {replyAuthor}</span>
-              <span className="rp-text">{snippet(replyTo.text, 100)}</span>
+              <span className="rp-text">{previewText(replyTo)}</span>
             </span>
           </button>
           <button type="button" className="icon-btn sm" aria-label="Хариултыг цуцлах" onClick={onCancelReply}>
             <Icon name="close" size={16} />
           </button>
         </div>
+      )}
+      {stickersOpen && (
+        <StickerPanel
+          onClose={() => setStickersOpen(false)}
+          onPick={(id) => {
+            if (onSendSticker(id) !== false) setStickersOpen(false);
+          }}
+        />
       )}
       <form
         className="composer"
@@ -375,6 +562,17 @@ function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onC
           submit();
         }}
       >
+        <button
+          type="button"
+          className={`sticker-toggle ${stickersOpen ? 'is-active' : ''}`}
+          aria-label="Стикер"
+          aria-expanded={stickersOpen}
+          title="Стикер"
+          disabled={cooling}
+          onClick={() => setStickersOpen((o) => !o)}
+        >
+          <Icon name="sticker" size={22} />
+        </button>
         <textarea
           ref={inputRef}
           className="composer-input"
@@ -459,6 +657,80 @@ function ReportModal({ open, onClose, onSubmit }) {
   );
 }
 
+// ---------------- Найз болох цонх ----------------
+function FriendModal({ open, onClose, onSubmit, partnerOffered, last }) {
+  const [platform, setPlatform] = useState(last?.platform || 'instagram');
+  const [handle, setHandle] = useState(last?.handle || '');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) setBusy(false);
+  }, [open]);
+  const meta = CONTACT_PLATFORMS.find((p) => p.id === platform);
+  const valid = handle.trim().length >= 2 && handle.trim().length <= 50;
+  const submit = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    const res = await onSubmit(platform, handle.trim());
+    setBusy(false);
+    if (res?.ok) onClose();
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Найз болох"
+      footer={
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Цуцлах
+          </button>
+          <button type="button" className="btn primary" disabled={!valid || busy} onClick={submit}>
+            {busy ? 'Илгээж байна…' : partnerOffered ? 'Зөвшөөрч солилцох' : 'Хүсэлт илгээх'}
+          </button>
+        </>
+      }
+    >
+      <p className="muted-text">
+        {partnerOffered
+          ? 'Нууц нэгэн аль хэдийн хүсэлт илгээсэн байна. Та хаягаа оруулбал хоёулаа бие биеийнхээ хаягийг шууд харна.'
+          : 'Хоёулаа зөвшөөрсөн үед л бие биеийнхээ хаягийг харна. Нөгөө хүн зөвшөөрөхгүй бол таны хаяг хэзээ ч харагдахгүй.'}
+      </p>
+      <div className="field-label small">Сошиал сүлжээ</div>
+      <div className="chips platform-chips" role="radiogroup" aria-label="Сошиал сүлжээ">
+        {CONTACT_PLATFORMS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="radio"
+            aria-checked={platform === p.id}
+            className={`chip ${platform === p.id ? 'is-active' : ''}`}
+            onClick={() => setPlatform(p.id)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <label className="field-label small" htmlFor="friend-handle">
+        Таны {meta?.label} хаяг
+      </label>
+      <input
+        id="friend-handle"
+        className="text-input"
+        value={handle}
+        onChange={(e) => setHandle(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        placeholder={meta?.placeholder}
+        maxLength={50}
+        autoComplete="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        data-autofocus
+      />
+      <p className="hint">Утасны дугаар, гэрийн хаягаа бүү оруулаарай. Хаяг тань чат дуусахад серверээс устна.</p>
+    </Modal>
+  );
+}
+
 // ---------------- Чатын дэлгэц ----------------
 export function Chat({ state, actions, settings, onOpenSettings }) {
   const { room, messages, partnerTyping, phase, ended, ratings, conn } = state;
@@ -467,7 +739,9 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
   const partnerOnline = Boolean(room?.partner.online);
   const [replyTo, setReplyTo] = useState(null);
   const [draft, setDraft] = useState('');
-  const [dialog, setDialog] = useState(null); // 'block' | 'leave' | 'report'
+  const [dialog, setDialog] = useState(null); // 'block' | 'leave' | 'report' | 'friend'
+  const friend = state.friend || {};
+  const befriended = Boolean(friend.partnerContact);
   const [suggestion, setSuggestion] = useState(null);
   const lastSuggestAt = useRef(0);
   const inputRef = useRef(null);
@@ -535,6 +809,14 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
     return true;
   };
 
+  const sendSticker = (id) => {
+    if (!actions.takeSendToken()) return false;
+    actions.sendMessage('', replyTo?.id || null, id);
+    setReplyTo(null);
+    setSuggestion(null);
+    return true;
+  };
+
   let statusText = 'Онлайн';
   let statusClass = 'is-online';
   if (!chatting) {
@@ -596,6 +878,17 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         </div>
         <div className="head-actions">
           {chatting && (
+            <button
+              type="button"
+              className={`icon-btn friend-btn ${befriended ? 'is-done' : friend.mine ? 'is-pending' : ''} ${friend.partnerOffered && !befriended ? 'has-request' : ''}`}
+              aria-label={befriended ? 'Найз боллоо' : 'Найз болох'}
+              title={befriended ? 'Найз боллоо' : friend.mine ? 'Хүсэлт илгээсэн' : 'Найз болох'}
+              onClick={() => !befriended && !friend.mine && setDialog('friend')}
+            >
+              <Icon name={befriended ? 'heartHand' : 'userPlus'} size={20} />
+            </button>
+          )}
+          {chatting && (
             <button type="button" className="btn next-btn" onClick={actions.next} aria-label="Дараагийн хүн" title="Дараагийн хүн">
               <Icon name="next" size={18} />
               <span className="lbl-long">Дараагийн хүн</span>
@@ -604,6 +897,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
           )}
           <Menu
             items={[
+              { label: 'Найз болох', icon: 'userPlus', onClick: () => setDialog('friend'), hidden: !chatting || befriended || Boolean(friend.mine) },
               { label: 'Мэдээлэх', icon: 'flag', onClick: () => setDialog('report'), hidden: !chatting && !endedPartnerSide },
               { label: 'Блоклох', icon: 'block', onClick: () => setDialog('block'), danger: true, hidden: !chatting && !endedPartnerSide },
               { label: 'Чат дуусгах', icon: 'logout', onClick: () => setDialog('leave'), hidden: !chatting },
@@ -615,14 +909,24 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         </div>
       </header>
 
-      {room?.sharedInterests?.length > 0 && (
+      {(room?.sharedInterests?.length > 0 || room?.sharedSchool) && (
         <div className="shared-bar">
-          Ижил сонирхол:
-          {room.sharedInterests.map((i) => (
-            <span key={i} className="mini-chip">
-              {interestLabel(i)}
-            </span>
-          ))}
+          {room.sharedSchool && (
+            <>
+              Нэг сургууль:
+              <span className="mini-chip school-chip">{schoolLabel(room.sharedSchool)}</span>
+            </>
+          )}
+          {room.sharedInterests?.length > 0 && (
+            <>
+              Ижил сонирхол:
+              {room.sharedInterests.map((i) => (
+                <span key={i} className="mini-chip">
+                  {interestLabel(i)}
+                </span>
+              ))}
+            </>
+          )}
         </div>
       )}
 
@@ -631,6 +935,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         partnerTyping={partnerTyping && chatting}
         partnerName={partnerName}
         onReply={chatting ? startReply : null}
+        onReact={chatting ? actions.react : null}
         onRetry={actions.retryMessage}
         jumpRef={jumpRef}
         footer={endPanel}
@@ -638,7 +943,25 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
 
       {chatting && (
         <div className="chat-bottom">
-          {suggestion && !replyTo && (
+          {!befriended && friend.mine && (
+            <div className="friend-bar is-waiting">
+              <Icon name="clock" size={16} />
+              <span>Найз болох хүсэлт илгээсэн. Нууц нэгэн зөвшөөрөхийг хүлээж байна…</span>
+              <button type="button" className="link-btn" onClick={actions.cancelFriend}>
+                Цуцлах
+              </button>
+            </div>
+          )}
+          {!befriended && !friend.mine && friend.partnerOffered && (
+            <div className="friend-bar is-request">
+              <Icon name="heartHand" size={16} />
+              <span>Нууц нэгэн тантай найз болохыг хүсч байна!</span>
+              <button type="button" className="btn sm primary" onClick={() => setDialog('friend')}>
+                Найз болох
+              </button>
+            </div>
+          )}
+          {suggestion && !replyTo && !(friend.partnerOffered && !befriended && !friend.mine) && (
             <div className="suggestion">
               <Icon name="sparkle" size={16} />
               <button
@@ -670,6 +993,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
             draft={draft}
             setDraft={setDraft}
             onSend={send}
+            onSendSticker={sendSticker}
             onTyping={actions.setTyping}
             replyTo={replyTo}
             replyAuthor={replyTo?.mine ? 'Өөрийн мессеж' : partnerName}
@@ -683,6 +1007,13 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         </div>
       )}
 
+      <FriendModal
+        open={dialog === 'friend'}
+        onClose={() => setDialog(null)}
+        onSubmit={actions.offerFriend}
+        partnerOffered={friend.partnerOffered}
+        last={friend.mine}
+      />
       <ConfirmDialog
         open={dialog === 'block'}
         title="Блоклох уу?"

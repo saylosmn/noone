@@ -1447,6 +1447,350 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
+
+/* ---------- Сургууль сонголт, текст оролт ---------- */
+.select-wrap {
+  position: relative;
+}
+.select {
+  appearance: none;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 44px 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.select option {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.select-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+}
+.text-input {
+  width: 100%;
+  min-height: 46px;
+  margin: 8px 0 10px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-size: 16px;
+  outline: none;
+}
+.text-input:focus {
+  border-color: rgba(var(--accent-rgb), 0.7);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
+}
+.platform-chips {
+  margin: 8px 0 14px;
+}
+.platform-chips .chip {
+  min-height: 36px;
+  font-size: 13.5px;
+}
+.school-chip {
+  background: rgba(var(--accent-rgb), 0.22);
+}
+
+/* ---------- Мессежийн үйлдэл, reaction ---------- */
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.msg-row.mine .msg-actions {
+  flex-direction: row-reverse;
+}
+.msg-row.has-reactions {
+  margin-bottom: 12px;
+}
+.reaction-badge {
+  position: absolute;
+  bottom: -14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  animation: pop 0.18s ease-out;
+}
+.theirs .reaction-badge {
+  left: 10px;
+}
+.mine .reaction-badge {
+  right: 10px;
+}
+.reaction-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  margin-left: 2px;
+}
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 15;
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  animation: pop 0.14s ease-out;
+}
+.reaction-picker.left {
+  left: 0;
+}
+.reaction-picker.right {
+  right: 0;
+}
+.reaction-option {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  transition: transform 0.12s, background-color 0.12s;
+}
+.reaction-option:hover,
+.reaction-option:focus-visible {
+  transform: scale(1.18);
+  background: rgba(255, 255, 255, 0.08);
+}
+.reaction-option.is-active {
+  background: rgba(var(--accent-rgb), 0.25);
+}
+
+/* ---------- Стикер ---------- */
+.bubble.is-sticker {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 0;
+  box-shadow: none;
+}
+.bubble.is-sticker .sticker-svg {
+  display: block;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+}
+.bubble.is-sticker .msg-meta {
+  float: none;
+  display: flex;
+  justify-content: flex-end;
+  margin: 2px 4px 0;
+  color: var(--muted);
+}
+.bubble.is-sticker .reaction-badge {
+  position: static;
+  float: left;
+  margin: 4px 0 0 4px;
+}
+.mine .bubble.is-sticker .reaction-badge {
+  float: right;
+  margin: 4px 4px 0 0;
+}
+.msg-row.has-reactions:has(.is-sticker) {
+  margin-bottom: 0;
+}
+.bubble.is-sticker .quote {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.sticker-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-2);
+  transition: background-color 0.15s, color 0.15s;
+}
+.sticker-toggle:hover:not(:disabled),
+.sticker-toggle.is-active {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent-2);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
+.sticker-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sticker-panel {
+  margin-bottom: 8px;
+  padding: 8px 10px 10px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  animation: pop 0.16s ease-out;
+}
+.sticker-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 4px 4px;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.sticker-option {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 14px;
+  border: 0;
+  background: transparent;
+  transition: background-color 0.12s, transform 0.12s;
+}
+.sticker-option:hover,
+.sticker-option:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  transform: scale(1.06);
+}
+
+/* ---------- Найз болох ---------- */
+.friend-btn {
+  position: relative;
+  color: var(--text-2);
+}
+.friend-btn.is-pending {
+  color: var(--warn);
+}
+.friend-btn.is-done {
+  color: var(--accent-2);
+  cursor: default;
+}
+.friend-btn.has-request::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bar);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.friend-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  animation: pop 0.18s ease-out;
+}
+.friend-bar span {
+  flex: 1;
+}
+.friend-bar.is-request {
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  color: var(--text);
+}
+.friend-bar.is-request > .icon {
+  color: var(--accent-2);
+}
+.friend-bar.is-waiting {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+.contact-card {
+  align-self: center;
+  width: min(100%, 340px);
+  margin: 10px 0;
+  padding: 14px 16px;
+  border-radius: 20px;
+  text-align: center;
+  background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.2), color-mix(in srgb, var(--accent-alt) 14%, transparent));
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  animation: pop 0.22s ease-out;
+}
+.contact-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+}
+.contact-title .icon {
+  color: var(--accent-2);
+}
+.contact-sub {
+  margin: 6px 0 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.contact-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.contact-platform {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 700;
+}
+.contact-handle {
+  font-weight: 700;
+  font-size: 16px;
+  word-break: break-all;
+  user-select: all;
+}
+.contact-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.contact-actions .btn {
+  text-decoration: none;
+}
+
 /* ---------- Connection banner & toasts ---------- */
 .conn-banner {
   position: sticky;

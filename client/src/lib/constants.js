@@ -8,6 +8,34 @@ export const INTERESTS = [
 
 export const interestLabel = (id) => INTERESTS.find((i) => i.id === id)?.label ?? id;
 
+export const SCHOOLS = [
+  { id: 'must', label: 'ШУТИС' },
+  { id: 'num', label: 'МУИС' },
+  { id: 'ufe', label: 'СЭЗИС' },
+  { id: 'mnums', label: 'АШУҮИС' },
+  { id: 'msue', label: 'МУБИС' },
+  { id: 'muls', label: 'ХААИС' },
+  { id: 'otgontenger', label: 'Отгонтэнгэр' },
+  { id: 'ikhzasag', label: 'Их Засаг' },
+  { id: 'mandakh', label: 'Мандах' },
+  { id: 'huree', label: 'Хүрээ' },
+  { id: 'ubis', label: 'Улаанбаатар ИС' },
+  { id: 'other', label: 'Бусад сургууль' },
+];
+export const schoolLabel = (id) => SCHOOLS.find((s) => s.id === id)?.label ?? '';
+
+export const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
+
+export const CONTACT_PLATFORMS = [
+  { id: 'instagram', label: 'Instagram', placeholder: '@username', url: (h) => `https://instagram.com/${h.replace(/^@/, '')}` },
+  { id: 'telegram', label: 'Telegram', placeholder: '@username', url: (h) => `https://t.me/${h.replace(/^@/, '')}` },
+  { id: 'facebook', label: 'Facebook', placeholder: 'Нэр эсвэл username', url: null },
+  { id: 'snapchat', label: 'Snapchat', placeholder: 'username', url: (h) => `https://www.snapchat.com/add/${h.replace(/^@/, '')}` },
+  { id: 'discord', label: 'Discord', placeholder: 'username', url: null },
+  { id: 'steam', label: 'Steam', placeholder: 'Steam нэр эсвэл ID', url: null },
+];
+export const platformLabel = (id) => CONTACT_PLATFORMS.find((p) => p.id === id)?.label ?? id;
+
 export const GENDERS = [
   { id: 'male', label: 'Эрэгтэй', symbol: '♂' },
   { id: 'female', label: 'Эмэгтэй', symbol: '♀' },
@@ -25,7 +53,8 @@ export const REPORT_REASONS = [
 export const RULES = [
   'Бусдыг хүндэтгэ — доромжлол, дарамт, заналхийлэл хориотой.',
   'Хүсээгүй хүнд бэлгийн шинжтэй зүйл бүү бич.',
-  'Өөрийн болон бусдын хувийн мэдээлэл (утас, хаяг, байршил) бүү хуваалц.',
+  'Утас, гэрийн хаяг, байршлаа бүү бич. Хүсвэл “Найз болох”-оор хоёулаа зөвшөөрч сошиал хаягаа солилц.',
+  'Хараалын үг автоматаар *** болж харагдана.',
   'Спам, зар сурталчилгаа, луйвар хориотой.',
   'Зохисгүй зан гаргавал “Мэдээлэх”, “Блоклох” товчийг ашигла.',
 ];
@@ -55,6 +84,9 @@ export const ERROR_TEXT = {
   offline: 'Сервертэй холбогдоогүй байна.',
   server_error: 'Серверт алдаа гарлаа. Дахин оролдоно уу.',
   no_session: 'Сесс шинэчлэгдэж байна. Дахин оролдоно уу.',
+  invalid_handle: 'Хаяг буруу байна (2–50 тэмдэгт).',
+  invalid_platform: 'Сошиал сүлжээгээ сонгоно уу.',
+  already_revealed: 'Та хоёр аль хэдийн хаягаа солилцсон.',
 };
 
 export const errorText = (code) => ERROR_TEXT[code] || 'Алдаа гарлаа. Дахин оролдоно уу.';
