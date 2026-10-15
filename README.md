@@ -3,8 +3,8 @@
 Нэрээ нууцалж, эсрэг хүйсийн санамсаргүй хүнтэй **бодит цагт текстээр** чатлах responsive веб сайт.
 Бүртгэл шаардахгүй, мессежийг серверт хадгалдаггүй.
 
-- **Frontend:** React + Vite → **Vercel**
-- **Backend:** Node.js + Express + Socket.IO → **Render**
+- **Frontend:** React + Vite → **Vercel** — <https://noone-ten.vercel.app>
+- **Backend:** Node.js + Express + Socket.IO → **Render** — <https://noone-server-ggsw.onrender.com/api/health>
 
 ```
 noone/
