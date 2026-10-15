@@ -335,6 +335,25 @@ test('нэг сургуулийнхныг ижил сонирхлоос ч тү�
   assert.equal(r.ok, true); // буруу сургууль үл тоогдоно
 });
 
+test('ШУТИС: нэг салбарынхныг түрүүлж, дараа нь ШУТИС-ийн өөр салбарынхныг холбоно', async () => {
+  const otherSub = await connect();
+  const sameSub = await connect();
+  await join(otherSub, 'male', [], 'must-bas');
+  await join(sameSub, 'male', [], 'must-mhts');
+  const f = await connect();
+  const found = waitFor(f, 'match:found');
+  const sameFound = waitFor(sameSub, 'match:found');
+  await join(f, 'female', [], 'must-mhts');
+  const m1 = await found;
+  assert.equal((await sameFound).roomId, m1.roomId);
+  assert.equal(m1.sharedSchool, 'must-mhts');
+
+  const f2 = await connect();
+  const found2 = waitFor(f2, 'match:found');
+  await join(f2, 'female', [], 'must-ehs');
+  assert.equal((await found2).sharedSchool, 'must'); // нэг их сургууль, өөр салбар
+});
+
 test('стикер илгээх, буруу стикер татгалзах', async () => {
   const { a, b } = await matchedPair();
   const incoming = waitFor(b, 'chat:message');

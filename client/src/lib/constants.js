@@ -8,8 +8,23 @@ export const INTERESTS = [
 
 export const interestLabel = (id) => INTERESTS.find((i) => i.id === id)?.label ?? id;
 
+// ШУТИС-ийн салбар сургуулиуд
+export const MUST_SCHOOLS = [
+  { id: 'must-bas', short: 'БАС', label: 'Барилга, архитектурын сургууль' },
+  { id: 'must-nhus', short: 'НХУС', label: 'Нийгэм, хүмүүнлэгийн ухааны сургууль' },
+  { id: 'must-hhuds', short: 'ХХҮДС', label: 'Хүнс, хөнгөн үйлдвэр, дизайны сургууль' },
+  { id: 'must-guus', short: 'ГУУС', label: 'Геологи, уул уурхайн сургууль' },
+  { id: 'must-mhts', short: 'МХТС', label: 'Мэдээлэл, холбооны технологийн сургууль' },
+  { id: 'must-ehs', short: 'ЭХС', label: 'Эрчим хүчний сургууль' },
+  { id: 'must-mts', short: 'МТС', label: 'Механик, тээврийн сургууль' },
+  { id: 'must-hshus', short: 'ХШУС', label: 'Хэрэглээний шинжлэх ухааны сургууль' },
+  { id: 'must-ms', short: 'МС', label: 'Менежментийн сургууль' },
+  { id: 'must-ghs', short: 'ГХС', label: 'Гадаад хэлний сургууль' },
+];
+
 export const SCHOOLS = [
   { id: 'must', label: 'ШУТИС' },
+  ...MUST_SCHOOLS.map((s) => ({ ...s, label: `ШУТИС · ${s.short}`, full: s.label })),
   { id: 'num', label: 'МУИС' },
   { id: 'ufe', label: 'СЭЗИС' },
   { id: 'mnums', label: 'АШУҮИС' },

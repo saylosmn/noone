@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GENDERS, INTERESTS, RULES, SCHOOLS } from '../lib/constants.js';
+import { GENDERS, INTERESTS, MUST_SCHOOLS, RULES, SCHOOLS } from '../lib/constants.js';
 import { Icon, Logo } from './Icon.jsx';
 
 export function OnlinePill({ conn, online }) {
@@ -120,15 +120,25 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
                 onChange={(e) => onProfile({ ...profile, school: e.target.value || null })}
               >
                 <option value="">Хэлэхгүй</option>
-                {SCHOOLS.map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {sc.label}
-                  </option>
-                ))}
+                <optgroup label="ШУТИС">
+                  <option value="must">ШУТИС (салбараа хэлэхгүй)</option>
+                  {MUST_SCHOOLS.map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      ШУТИС · {sc.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Бусад их сургууль">
+                  {SCHOOLS.filter((sc) => !sc.id.startsWith('must')).map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <Icon name="chevronDown" size={18} className="select-icon" />
             </div>
-            <p className="hint">Нэг сургуулийн хүнийг хамгийн түрүүнд хайна. Сургууль тань зөвхөн ижил байвал л нөгөө хүнд харагдана.</p>
+            <p className="hint">Нэг сургуулийн (ШУТИС бол нэг салбарын) хүнийг хамгийн түрүүнд хайна. Сургууль тань зөвхөн ижил байвал л нөгөө хүнд харагдана.</p>
           </div>
 
           <div className="rules-box">

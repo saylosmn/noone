@@ -8,6 +8,7 @@ import {
   REACTIONS,
   REPORT_REASONS,
   SCHOOLS,
+  sharedSchool as getSharedSchool,
   STICKERS,
 } from './constants.js';
 import { maskProfanity } from './profanity.js';
@@ -187,9 +188,10 @@ export function attachChat(io, { config, push, reports }) {
       if (!other || other.status !== 'queued' || !other.socketId) continue;
       if (isBlocked(client, other) || recentlyPaired(client, other, now)) continue;
       const shared = client.interests.filter((i) => other.interests.includes(i));
-      const sameSchool = client.school && client.school !== 'other' && client.school === other.school ? client.school : null;
-      // Нэг сургууль = 3 оноо, ижил сонирхол бүр = 1 оноо
-      const score = (sameSchool ? 3 : 0) + shared.length;
+      const school = getSharedSchool(client.school, other.school);
+      const sameSchool = school ? school.id : null;
+      // Нэг салбар = 3, нэг их сургууль = 2, ижил сонирхол бүр = 1 оноо
+      const score = (school ? school.score : 0) + shared.length;
       const allowed = score > 0 || (isFlexible(client, now) && isFlexible(other, now));
       if (!allowed) continue;
       // Оноо өндрийг нь, тэнцвэл эрт хүлээсэн хүнийг (Set нь FIFO дараалалтай)
