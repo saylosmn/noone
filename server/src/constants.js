@@ -14,7 +14,10 @@ export const SCHOOLS = [
 ];
 
 // Стикерүүдийн id (зураг нь клиент дээр)
-export const STICKERS = ['hi', 'haha', 'love', 'sad', 'wow', 'cool', 'sleepy', 'angry', 'think', 'thanks', 'gg', 'bye'];
+export const STICKERS = [
+  'hi', 'haha', 'love', 'sad', 'wow', 'cool', 'sleepy', 'angry', 'think', 'thanks', 'gg', 'bye',
+  'yes', 'no', 'okay', 'sorry', 'shy', 'kiss', 'hungry', 'party', 'night', 'omg', 'dead', 'fire',
+];
 
 export const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 

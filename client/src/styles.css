@@ -1760,7 +1760,7 @@ code {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
   gap: 4px;
-  max-height: 200px;
+  max-height: min(260px, 38dvh);
   overflow-y: auto;
 }
 .sticker-option {

@@ -14,6 +14,18 @@ export const STICKERS = [
   { id: 'thanks', label: 'Баярлалаа', color: '#4ade80', eyes: 'happy', mouth: 'smile', extras: ['blush', 'hearts'] },
   { id: 'gg', label: 'GG', color: '#fb923c', eyes: 'star', mouth: 'open', extras: ['headset'] },
   { id: 'bye', label: 'Баяртай', color: '#60a5fa', eyes: 'wink', mouth: 'smile', extras: ['wave'] },
+  { id: 'yes', label: 'Тийм', color: '#34d399', eyes: 'happy', mouth: 'open', extras: ['thumbUp'] },
+  { id: 'no', label: 'Үгүй', color: '#f87171', eyes: 'dot', mouth: 'flat', extras: ['cross'] },
+  { id: 'okay', label: 'Ойлголоо', color: '#38bdf8', eyes: 'dot', mouth: 'smile', extras: ['check'] },
+  { id: 'sorry', label: 'Уучлаарай', color: '#c4b5fd', eyes: 'teary', mouth: 'wavy', extras: ['sweat'] },
+  { id: 'shy', label: 'Ичлээ', color: '#fda4af', eyes: 'happy', mouth: 'small', extras: ['bigBlush'] },
+  { id: 'kiss', label: 'Мууах', color: '#f472b6', eyes: 'wink', mouth: 'kiss', extras: ['kissHeart', 'blush'] },
+  { id: 'hungry', label: 'Өлсөж байна', color: '#fdba74', eyes: 'big', mouth: 'drool', extras: [] },
+  { id: 'party', label: 'Баяр хүргэе', color: '#a78bfa', eyes: 'laugh', mouth: 'open', extras: ['partyHat', 'confetti'] },
+  { id: 'night', label: 'Сайхан нойр', color: '#818cf8', eyes: 'line', mouth: 'small', extras: ['moon', 'stars'] },
+  { id: 'omg', label: 'Ээ бурхан', color: '#fde047', eyes: 'big', mouth: 'o', extras: ['cheekHands'] },
+  { id: 'dead', label: 'Үхлээ', color: '#94a3b8', eyes: 'x', mouth: 'tongue', extras: [] },
+  { id: 'fire', label: 'Галзуу', color: '#fb7185', eyes: 'star', mouth: 'big', extras: ['fire'] },
 ];
 
 export const stickerLabel = (id) => STICKERS.find((s) => s.id === id)?.label ?? 'Стикер';
@@ -134,6 +146,27 @@ function Eyes({ type }) {
         </>
       );
     }
+    case 'teary':
+      return (
+        <>
+          {[44, 76].map((cx) => (
+            <g key={cx}>
+              <circle cx={cx} cy="52" r="8" fill={INK} />
+              <circle cx={cx + 2.5} cy="49" r="3" fill="#fff" />
+              <circle cx={cx - 2.5} cy="55" r="1.5" fill="#fff" />
+            </g>
+          ))}
+          <path d="M34 42 L50 39" {...stroke} strokeWidth="3" />
+          <path d="M86 42 L70 39" {...stroke} strokeWidth="3" />
+        </>
+      );
+    case 'x':
+      return (
+        <>
+          <path d="M38 46 L50 58 M50 46 L38 58" {...stroke} />
+          <path d="M70 46 L82 58 M82 46 L70 58" {...stroke} />
+        </>
+      );
     case 'wink':
       return (
         <>
@@ -180,6 +213,30 @@ function Mouth({ type }) {
       return <path d="M50 74 L70 72" {...stroke} />;
     case 'smirk':
       return <path d="M48 73 Q62 80 75 67" {...stroke} />;
+    case 'small':
+      return <path d="M53 72 Q60 77 67 72" {...stroke} strokeWidth="3.5" />;
+    case 'wavy':
+      return <path d="M46 75 q4.5 -5 9 0 t9 0 t9 0" {...stroke} strokeWidth="3.5" />;
+    case 'kiss':
+      return (
+        <>
+          <path d="M57 66 q8 3 0 7 q8 3 0 8" {...stroke} strokeWidth="3.5" />
+        </>
+      );
+    case 'tongue':
+      return (
+        <>
+          <path d="M44 68 Q60 80 76 68" {...stroke} />
+          <path d="M58 73 q0 14 9 12 q6 -2 4 -14" fill="#ff7a93" stroke={INK} strokeWidth="3" strokeLinejoin="round" />
+        </>
+      );
+    case 'drool':
+      return (
+        <>
+          <path d="M44 66 Q60 86 76 66 Z" fill={INK} stroke={INK} strokeWidth="3" strokeLinejoin="round" />
+          <path d="M70 72 q3 10 0 16 q-4 3 -5 -2 q1 -6 1 -12" fill="#7dd3fc" stroke={INK} strokeWidth="2" />
+        </>
+      );
     case 'grit':
       return (
         <>
@@ -248,6 +305,84 @@ function Extra({ type }) {
           ?
         </text>
       );
+    case 'thumbUp':
+      return (
+        <g transform="translate(88 58) rotate(-10)">
+          <rect x="0" y="12" width="22" height="20" rx="6" fill="#ffe0b8" stroke={INK} strokeWidth="3" />
+          <path d="M5 13 V2 q0 -5 5 -4 q4 1 3 7 l-1 7" fill="#ffe0b8" stroke={INK} strokeWidth="3" strokeLinejoin="round" />
+        </g>
+      );
+    case 'cross':
+      return (
+        <g>
+          <circle cx="100" cy="26" r="13" fill="#fff" stroke={INK} strokeWidth="3" />
+          <path d="M94 20 L106 32 M106 20 L94 32" stroke="#ef4444" strokeWidth="4" strokeLinecap="round" />
+        </g>
+      );
+    case 'check':
+      return (
+        <g>
+          <circle cx="100" cy="26" r="13" fill="#fff" stroke={INK} strokeWidth="3" />
+          <path d="M93 26 L98 31 L107 21" stroke="#16a34a" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      );
+    case 'sweat':
+      return <path d="M92 30 q-6 9 -1 13 q6 2 6 -5 z" fill="#7dd3fc" stroke={INK} strokeWidth="2" />;
+    case 'bigBlush':
+      return (
+        <>
+          <ellipse cx="32" cy="64" rx="9" ry="5.5" fill="#e11d48" opacity="0.55" />
+          <ellipse cx="88" cy="64" rx="9" ry="5.5" fill="#e11d48" opacity="0.55" />
+          <path d="M26 62 l3 -3 M32 62 l3 -3 M82 62 l3 -3 M88 62 l3 -3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
+        </>
+      );
+    case 'kissHeart':
+      return <path d="M88 76 c-8 -6 -4 -14 1 -11 c4 -4 11 2 -1 11z" fill="#e11d48" stroke={INK} strokeWidth="1.5" />;
+    case 'partyHat':
+      return (
+        <g>
+          <path d="M44 16 L60 -8 L76 16 Z" fill="#facc15" stroke={INK} strokeWidth="3" strokeLinejoin="round" transform="translate(0 6)" />
+          <path d="M50 14 L70 14 M54 6 L66 6" stroke="#ec4899" strokeWidth="3" transform="translate(0 6)" />
+          <circle cx="60" cy="-3" r="4" fill="#ec4899" stroke={INK} strokeWidth="2" />
+        </g>
+      );
+    case 'confetti':
+      return (
+        <>
+          <rect x="14" y="20" width="6" height="3" rx="1" fill="#22d3ee" transform="rotate(30 17 21)" />
+          <rect x="98" y="34" width="6" height="3" rx="1" fill="#facc15" transform="rotate(-25 101 35)" />
+          <circle cx="22" cy="40" r="2.5" fill="#f472b6" />
+          <circle cx="104" cy="18" r="2.5" fill="#4ade80" />
+          <rect x="90" y="10" width="5" height="3" rx="1" fill="#fb923c" transform="rotate(50 92 11)" />
+        </>
+      );
+    case 'moon':
+      return <path d="M100 10 a12 12 0 1 0 12 16 a9 9 0 1 1 -12 -16z" fill="#fde68a" stroke={INK} strokeWidth="2" />;
+    case 'stars':
+      return (
+        <>
+          <path d="M20 18 l1.6 3.4 3.6 0.5 -2.6 2.5 0.6 3.6 -3.2 -1.7 -3.2 1.7 0.6 -3.6 -2.6 -2.5 3.6 -0.5z" fill="#fff" />
+          <circle cx="32" cy="10" r="1.6" fill="#fff" />
+        </>
+      );
+    case 'cheekHands':
+      return (
+        <>
+          <ellipse cx="22" cy="70" rx="9" ry="12" fill="#ffe0b8" stroke={INK} strokeWidth="3" />
+          <ellipse cx="98" cy="70" rx="9" ry="12" fill="#ffe0b8" stroke={INK} strokeWidth="3" />
+        </>
+      );
+    case 'fire':
+      return (
+        <path
+          d="M60 -2 q14 12 6 22 q8 -2 8 -10 q10 14 -2 24 l-24 0 q-12 -10 -2 -24 q0 8 8 10 q-8 -10 6 -22z"
+          fill="#f97316"
+          stroke={INK}
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          transform="translate(0 2)"
+        />
+      );
     case 'headset':
       return (
         <>
@@ -267,8 +402,9 @@ export function Sticker({ id, size = 112 }) {
   const s = STICKERS.find((x) => x.id === id);
   if (!s) return null;
   const small = s.label.length > 7;
+  const tiny = s.label.length > 9;
   return (
-    <svg viewBox="0 0 120 124" width={size} height={size * (124 / 120)} role="img" aria-label={`Стикер: ${s.label}`} className="sticker-svg">
+    <svg viewBox="0 -8 120 132" width={size} height={size * (132 / 120)} overflow="visible" role="img" aria-label={`Стикер: ${s.label}`} className="sticker-svg">
       <path
         d="M60 10 C90 10 108 30 108 58 C108 86 90 102 60 102 C30 102 12 86 12 58 C12 30 30 10 60 10Z"
         fill={s.color}
@@ -277,9 +413,10 @@ export function Sticker({ id, size = 112 }) {
       />
       <ellipse cx="42" cy="26" rx="14" ry="7" fill="#fff" opacity="0.35" transform="rotate(-20 42 26)" />
       {s.extras.includes('headset') && <Extra type="headset" />}
+      {s.extras.includes('cheekHands') && <Extra type="cheekHands" />}
       <Eyes type={s.eyes} />
       <Mouth type={s.mouth} />
-      {s.extras.filter((e) => e !== 'headset').map((e) => (
+      {s.extras.filter((e) => e !== 'headset' && e !== 'cheekHands').map((e) => (
         <Extra key={e} type={e} />
       ))}
       <g>
@@ -290,7 +427,7 @@ export function Sticker({ id, size = 112 }) {
           textAnchor="middle"
           fontFamily="Unbounded, Inter, sans-serif"
           fontWeight="700"
-          fontSize={small ? 11 : 13}
+          fontSize={tiny ? 9.5 : small ? 11 : 13}
           fill="#fff"
         >
           {s.label}
