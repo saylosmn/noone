@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import express from 'express';
 import { KeyedLimiter } from './limiter.js';
 import { CONFESSION_REPORT_REASONS, CONFESSION_TAGS, SCHOOLS } from './constants.js';
@@ -30,7 +30,7 @@ const normalize = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
  * Нууц хана — нэргүй confession бичих, like дарах, мэдээлэх.
  * Зохиогчийн IP, төхөөрөмжийн ID-г ХАДГАЛАХГҮЙ — зөвхөн давс нэмсэн богино hash.
  */
-export function createConfessions({ config, kv }) {
+export function createConfessions({ config, kv, adminAuth }) {
   const c = config.confessions;
   const items = new Map(); // id -> item (Map нь оруулсан дарааллаа хадгална)
   const recentHashes = new Map(); // normalized text hash -> ts (давхардал)
@@ -38,8 +38,6 @@ export function createConfessions({ config, kv }) {
   let dirty = false;
   let saveTimer = null;
   let saving = Promise.resolve();
-  // Хяналтын тохиргоо: auto — шууд нийтэлнэ, manual — админ зөвшөөрсний дараа л харагдана
-  const settings = { moderation: c.moderation === 'manual' ? 'manual' : 'auto' };
   const bans = new Map(); // 'd:<hash>' | 'i:<hash>' -> { until, at, reason }
 
   const hash = (kind, value) =>
@@ -56,7 +54,7 @@ export function createConfessions({ config, kv }) {
   };
 
   // Харагдах эсэх: нуугдаагүй, хянагдаж буй биш
-  const isPublic = (it) => !it.hidden && !it.pending;
+  const isPublic = (it) => !it.hidden;
 
   function banUntil(v) {
     const now = Date.now();
@@ -71,7 +69,6 @@ export function createConfessions({ config, kv }) {
   // ---------- Хадгалалт ----------
   const serialize = () => ({
     v: 1,
-    settings,
     bans: [...bans.entries()],
     items: [...items.values()].map((it) => ({
       ...it,
@@ -83,9 +80,6 @@ export function createConfessions({ config, kv }) {
   async function load() {
     try {
       const data = await kv.get(STORE_KEY);
-      if (data?.settings?.moderation === 'manual' || data?.settings?.moderation === 'auto') {
-        settings.moderation = data.settings.moderation;
-      }
       for (const [key, b] of data?.bans || []) if (b?.until > Date.now()) bans.set(key, b);
       for (const raw of data?.items || []) {
         if (!ID_RE.test(raw.id)) continue;
@@ -160,7 +154,6 @@ export function createConfessions({ config, kv }) {
     likes: it.likers.size,
     liked: v.device ? it.likers.has(v.device) : false,
     mine: v.device ? it.author === v.device : false,
-    pending: !!it.pending,
   });
 
   const fail = (res, status, error, extra = {}) => res.status(status).json({ ok: false, error, ...extra });
@@ -191,7 +184,7 @@ export function createConfessions({ config, kv }) {
     const school = SCHOOLS.includes(req.query.school) ? req.query.school : null;
     const offset = Math.min(Math.max(Number.parseInt(req.query.offset, 10) || 0, 0), 2000);
 
-    let list = [...items.values()].filter((it) => (isPublic(it) || (it.pending && !it.hidden && v.device && it.author === v.device)) && (!tag || it.tag === tag) && matchesSchool(it.school, school));
+    let list = [...items.values()].filter((it) => isPublic(it) && (!tag || it.tag === tag) && matchesSchool(it.school, school));
     if (sort === 'top') {
       const since = Date.now() - c.topWindowDays * DAY;
       list = list.filter((it) => it.ts >= since).sort((a, b) => b.likers.size - a.likers.size || b.ts - a.ts);
@@ -209,9 +202,8 @@ export function createConfessions({ config, kv }) {
 
   router.get('/:id', (req, res) => {
     const it = items.get(req.params.id);
-    const v = viewer(req);
-    if (!it || it.hidden || (it.pending && it.author !== v.device)) return fail(res, 404, 'not_found');
-    res.json({ ok: true, item: toPublic(it, v) });
+    if (!it || it.hidden) return fail(res, 404, 'not_found');
+    res.json({ ok: true, item: toPublic(it, viewer(req)) });
   });
 
   router.post('/', (req, res) => {
@@ -252,7 +244,6 @@ export function createConfessions({ config, kv }) {
       likers: new Set(),
       reporters: new Set(),
       hidden: false,
-      pending: settings.moderation === 'manual',
     };
     items.set(item.id, item);
     recentHashes.set(textHash, item.ts);
@@ -327,17 +318,11 @@ export function createConfessions({ config, kv }) {
   router.use((err, req, res, next) => fail(res, err.status === 413 ? 413 : 400, err.status === 413 ? 'too_long' : 'invalid'));
 
   // ---------- Админ ----------
-  const safeEqual = (a, b) => {
-    const x = Buffer.from(String(a));
-    const y = Buffer.from(String(b));
-    return x.length === y.length && timingSafeEqual(x, y);
-  };
   const admin = express.Router();
   admin.use(express.json({ limit: '2kb' }));
   admin.use((req, res, next) => {
     const ipKey = hash('ip', clientIp(req));
-    const auth = req.get('authorization') || '';
-    if (config.adminToken && safeEqual(auth, `Bearer ${config.adminToken}`)) return next();
+    if (adminAuth?.isAuthorized(req)) return next();
     // Нууц үг таахаас сэргийлж буруу оролдлогыг хязгаарлана
     const r = limits.adminFail.take(ipKey);
     if (!r.ok) return limited(res, r);
@@ -355,7 +340,6 @@ export function createConfessions({ config, kv }) {
     reasons: it.reasons || {},
     hidden: !!it.hidden,
     hiddenBy: it.hidden ? it.hiddenBy || 'admin' : null,
-    pending: !!it.pending,
     approved: !!it.approved,
     author: it.author ? it.author.slice(0, 6) : null,
     authorPosts: [...items.values()].filter((x) => x.author === it.author).length,
@@ -367,7 +351,6 @@ export function createConfessions({ config, kv }) {
     return {
       total: all.length,
       public: all.filter(isPublic).length,
-      pending: all.filter((it) => it.pending && !it.hidden).length,
       reported: all.filter((it) => it.reporters.size > 0 && !it.hidden && !it.approved).length,
       hidden: all.filter((it) => it.hidden).length,
       bans: [...bans.values()].filter((b) => b.until > Date.now()).length,
@@ -376,31 +359,20 @@ export function createConfessions({ config, kv }) {
   };
 
   admin.get('/', (req, res) => {
-    const filter = ['reported', 'pending', 'hidden', 'all'].includes(req.query.filter) ? req.query.filter : 'all';
+    const filter = ['reported', 'hidden', 'all'].includes(req.query.filter) ? req.query.filter : 'all';
     const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase().slice(0, 100) : '';
     let list = [...items.values()];
     if (filter === 'reported') list = list.filter((it) => it.reporters.size > 0 && !it.hidden && !it.approved);
-    if (filter === 'pending') list = list.filter((it) => it.pending && !it.hidden);
     if (filter === 'hidden') list = list.filter((it) => it.hidden);
     if (q) list = list.filter((it) => it.text.toLowerCase().includes(q));
     list.sort(filter === 'reported' ? (a, b) => b.reporters.size - a.reporters.size || b.ts - a.ts : (a, b) => b.ts - a.ts);
     res.json({
       ok: true,
       storage: kv.kind,
-      settings,
       stats: adminStats(),
       count: list.length,
       items: list.slice(0, 300).map(adminItem),
     });
-  });
-
-  admin.get('/settings', (req, res) => res.json({ ok: true, settings }));
-  admin.post('/settings', (req, res) => {
-    const m = req.body?.moderation;
-    if (m !== 'auto' && m !== 'manual') return fail(res, 400, 'invalid');
-    settings.moderation = m;
-    scheduleSave();
-    res.json({ ok: true, settings });
   });
 
   const withItem = (handler) => (req, res) => {
@@ -417,14 +389,12 @@ export function createConfessions({ config, kv }) {
     withItem((it, req) => {
       it.hidden = req.body?.hidden !== false;
       it.hiddenBy = it.hidden ? 'admin' : null;
-      if (!it.hidden) it.pending = false;
     }),
   );
-  // Зөвшөөрөх: нийтэлж, мэдээллийг цэвэрлэнэ
+  // Зөвшөөрөх / сэргээх: дахин харуулж, мэдээллийг цэвэрлэнэ
   admin.post(
     '/:id/approve',
     withItem((it) => {
-      it.pending = false;
       it.hidden = false;
       it.hiddenBy = null;
       it.approved = true;
@@ -484,6 +454,6 @@ export function createConfessions({ config, kv }) {
       saveTimer = null;
       await flush();
     },
-    _internal: { items, recentHashes, limits, bans, settings },
+    _internal: { items, recentHashes, limits, bans },
   };
 }

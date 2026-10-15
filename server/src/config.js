@@ -36,6 +36,9 @@ export function loadConfig(overrides = {}) {
     reportBanThreshold: int(env.REPORT_BAN_THRESHOLD, 3),
     reportBanMs: int(env.REPORT_BAN_MS, 15 * 60 * 1000),
     adminToken: env.ADMIN_TOKEN || '',
+    // /admin хуудсанд оруулах нууц код (5 оронтой тоо, нэр г.м.)
+    adminPassword: env.ADMIN_PASSWORD || '',
+    adminSessionHours: int(env.ADMIN_SESSION_HOURS, 12),
     trustProxy: env.TRUST_PROXY === 'true',
     serveClient: env.SERVE_CLIENT !== 'false',
     vapid: {
@@ -54,8 +57,6 @@ export function loadConfig(overrides = {}) {
       retentionDays: int(env.CONFESSION_RETENTION_DAYS, 30),
       topWindowDays: int(env.CONFESSION_TOP_DAYS, 7),
       hideReports: int(env.CONFESSION_HIDE_REPORTS, 3),
-      // auto | manual (анхны утга — дараа нь админ хуудаснаас солино)
-      moderation: env.CONFESSION_MODERATION || 'auto',
       postBurst: int(env.CONFESSION_POST_BURST, 3),
       postIntervalSec: int(env.CONFESSION_POST_INTERVAL_SEC, 300),
       saveDelayMs: int(env.CONFESSION_SAVE_DELAY_MS, 5000),

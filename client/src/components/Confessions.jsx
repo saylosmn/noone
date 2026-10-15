@@ -14,6 +14,7 @@ import { renderStoryImage } from '../lib/storyImage.js';
 import { formatDuration } from '../lib/format.js';
 import { Icon, Logo } from './Icon.jsx';
 import { ConfirmDialog, Modal } from './Modal.jsx';
+import { adminRequest, adminSessionToken } from './Admin.jsx';
 
 function SchoolSelect({ id, value, onChange, emptyLabel, className = '' }) {
   return (
@@ -42,7 +43,7 @@ function SchoolSelect({ id, value, onChange, emptyLabel, className = '' }) {
 }
 
 // ---------------- Нэг confession ----------------
-function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }) {
+function ConfessionCard({ item, highlight, isAdmin, onLike, onShare, onReport, onDelete }) {
   const tag = tagInfo(item.tag);
   const [menu, setMenu] = useState(false);
   const menuRef = useRef(null);
@@ -65,14 +66,12 @@ function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }
         </span>
         {item.school && <span className="cf-school">{schoolLabel(item.school)}</span>}
         {item.mine && <span className="cf-mine">Таных</span>}
-        {item.pending && <span className="cf-pending">⏳ Хянагдаж байна</span>}
         <span className="cf-time">{timeAgo(item.ts)}</span>
       </div>
       <p className="cf-text">{item.text}</p>
-      <div className={`cf-actions ${item.pending ? 'is-pending' : ''}`}>
+      <div className="cf-actions">
         <button
           type="button"
-          disabled={item.pending}
           className={`cf-like ${item.liked ? 'is-liked' : ''}`}
           aria-pressed={item.liked}
           aria-label={item.liked ? 'Like буцаах' : 'Like дарах'}
@@ -81,7 +80,7 @@ function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }
           <Icon name="heart" size={19} />
           <span>{item.likes || ''}</span>
         </button>
-        <button type="button" className="cf-action" disabled={item.pending} onClick={() => onShare(item)}>
+        <button type="button" className="cf-action" onClick={() => onShare(item)}>
           <Icon name="share" size={18} />
           <span>Хуваалцах</span>
         </button>
@@ -97,7 +96,7 @@ function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }
           </button>
           {menu && (
             <div className="cf-menu" role="menu">
-              {item.mine ? (
+              {item.mine || isAdmin ? (
                 <button
                   type="button"
                   role="menuitem"
@@ -107,9 +106,10 @@ function ConfessionCard({ item, highlight, onLike, onShare, onReport, onDelete }
                     onDelete(item);
                   }}
                 >
-                  <Icon name="trash" size={16} /> Устгах
+                  <Icon name="trash" size={16} /> {item.mine ? 'Устгах' : 'Устгах (админ)'}
                 </button>
-              ) : (
+              ) : null}
+              {!item.mine && (
                 <button
                   type="button"
                   role="menuitem"
@@ -447,6 +447,7 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
   const [reporting, setReporting] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const reqId = useRef(0);
+  const [adminToken] = useState(adminSessionToken);
   // Modal-ын onClose тогтвортой байх ёстой (эс тэгвээс focus үсэрнэ)
   const closeCompose = useCallback(() => setComposeOpen(false), []);
   const closeShare = useCallback(() => setShare(null), []);
@@ -546,11 +547,12 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
 
   const remove = async (item) => {
     try {
-      await confessionsApi.remove(item.id);
+      if (!item.mine && adminToken) await adminRequest(adminToken, `/${item.id}`, { method: 'DELETE' });
+      else await confessionsApi.remove(item.id);
       dropItem(item.id);
       onToast('Устгагдлаа.', 'success');
     } catch (err) {
-      onToast(err.message);
+      onToast(err.code ? err.message : 'Устгаж чадсангүй. Админ хэсэгт дахин нэвтэрнэ үү.');
     }
   };
 
@@ -558,14 +560,11 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
     if (sort === 'new' && (!tag || tag === item.tag) && (!school || item.school?.startsWith(school))) {
       setItems((list) => [item, ...list]);
     }
-    if (item.pending) {
-      onToast('Илгээгдлээ. Админ шалгасны дараа бүгдэд харагдана.', 'success');
-      return;
-    }
     setShare({ item, justPosted: true });
   };
 
   const cardProps = {
+    isAdmin: !!adminToken,
     onLike: like,
     onShare: (item) => setShare({ item, justPosted: false }),
     onReport: setReporting,
@@ -581,9 +580,16 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
           </button>
           <Logo small />
         </div>
-        <button type="button" className="btn sm primary wall-top-compose" onClick={() => setComposeOpen(true)}>
-          <Icon name="plus" size={18} /> Бичих
-        </button>
+        <div className="topbar-right">
+          {adminToken && (
+            <button type="button" className="btn sm ghost" onClick={() => onNavigate('/admin')}>
+              <Icon name="shield" size={16} /> Хяналт
+            </button>
+          )}
+          <button type="button" className="btn sm primary wall-top-compose" onClick={() => setComposeOpen(true)}>
+            <Icon name="plus" size={18} /> Бичих
+          </button>
+        </div>
       </header>
 
       {searching && <SearchingBar search={search} onBack={onBack} onCancel={onCancelSearch} />}
@@ -707,7 +713,7 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
       <ConfirmDialog
         open={!!deleting}
         title="Устгах уу?"
-        body="Энэ нууц ханнаас бүрмөсөн устна."
+        body={deleting && !deleting.mine ? 'Админ эрхээр устгана. Энэ нууц ханнаас бүрмөсөн устна.' : 'Энэ нууц ханнаас бүрмөсөн устна.'}
         confirmLabel="Устгах"
         onConfirm={() => remove(deleting)}
         onClose={closeDelete}

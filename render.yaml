@@ -33,6 +33,9 @@ services:
         generateValue: true
       - key: ADMIN_TOKEN
         generateValue: true
+      # /admin хуудсанд нэвтрэх код (жишээ нь 5 оронтой тоо). Render-д гараар оруулна.
+      - key: ADMIN_PASSWORD
+        sync: false
       # Web Push хэрэгтэй бол `npm run vapid`-ээр үүсгээд нэмнэ (хоосон бол ажиллахгүй)
       - key: VAPID_PUBLIC_KEY
         sync: false

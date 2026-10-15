@@ -10,7 +10,7 @@ const devB = `d_${'b'.repeat(32)}`;
 const devC = `d_${'c'.repeat(32)}`;
 
 before(async () => {
-  server = createApp({ serveClient: false, clientOrigins: ['*'], adminToken: 'secret' });
+  server = createApp({ serveClient: false, clientOrigins: ['*'], adminToken: 'secret', adminPassword: '12345' });
   await server.confessions.ready;
   const addr = await server.listen(0, '127.0.0.1');
   url = `http://127.0.0.1:${addr.port}`;
@@ -21,11 +21,10 @@ after(async () => {
 });
 
 beforeEach(() => {
-  const { items, recentHashes, limits, bans, settings } = server.confessions._internal;
+  const { items, recentHashes, limits, bans } = server.confessions._internal;
   items.clear();
   recentHashes.clear();
   bans.clear();
-  settings.moderation = 'auto';
   for (const l of Object.values(limits)) l.buckets.clear();
 });
 
@@ -35,6 +34,15 @@ const api = async (path, { method = 'GET', body, device } = {}) => {
   const res = await fetch(`${url}/api/confessions${path}`, {
     method,
     headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+
+const adminApi = async (path, { method = 'GET', body, token = 'secret' } = {}) => {
+  const res = await fetch(`${url}/api/admin/confessions${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json().catch(() => null) };
@@ -143,6 +151,14 @@ test('бичих хурдны хязгаар', async () => {
   assert.ok(r.body.retryAfterMs > 0);
 });
 
+test('шууд нийтлэгдэж, админ дараа нь устгана', async () => {
+  const { body } = await post('Шууд нийтлэгдэх ёстой бичлэг');
+  assert.equal((await api('', { device: devB })).body.items.length, 1);
+  const del = await adminApi(`/${body.item.id}`, { method: 'DELETE' });
+  assert.equal(del.status, 200);
+  assert.equal((await api('', { device: devB })).body.items.length, 0);
+});
+
 test('админ нууж, устгана', async () => {
   const { body } = await post('Админ шалгах confession бичлээ');
   const id = body.item.id;
@@ -153,31 +169,6 @@ test('админ нууж, устгана', async () => {
   assert.equal(list.count, 1);
   await fetch(`${url}/api/admin/confessions/${id}/hide`, { method: 'POST', headers: auth, body: '{}' });
   assert.equal((await api('')).body.items.length, 0);
-});
-
-const adminApi = async (path, { method = 'GET', body, token = 'secret' } = {}) => {
-  const res = await fetch(`${url}/api/admin/confessions${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-};
-
-test('manual горим: зөвшөөрөхөөс өмнө зөвхөн зохиогчид харагдана', async () => {
-  await adminApi('/settings', { method: 'POST', body: { moderation: 'manual' } });
-  const { body } = await post('Шалгагдах ёстой нууц бичлэг');
-  assert.equal(body.item.pending, true);
-  assert.equal((await api('', { device: devB })).body.items.length, 0);
-  assert.equal((await api('', { device: devA })).body.items[0].pending, true);
-  assert.equal((await api(`/${body.item.id}`, { device: devB })).status, 404);
-
-  const queue = await adminApi('?filter=pending');
-  assert.equal(queue.body.stats.pending, 1);
-  await adminApi(`/${body.item.id}/approve`, { method: 'POST' });
-  const pub = await api('', { device: devB });
-  assert.equal(pub.body.items.length, 1);
-  assert.equal(pub.body.items[0].pending, false);
 });
 
 test('мэдээлэгдсэнийг зөвшөөрвөл мэдээлэл цэвэрлэгдэнэ', async () => {
@@ -210,6 +201,29 @@ test('зохиогчийг хориглоход бүх бичлэг нь нуу�
 
 test('админ: буруу токен', async () => {
   assert.equal((await adminApi('', { token: 'wrong' })).status, 404);
+});
+
+const login = (password) =>
+  fetch(`${url}/api/admin/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+test('админ: 5 оронтой кодоор нэвтэрч, session токеноор ажиллана', async () => {
+  server.adminAuth._internal.perIp.clear();
+  server.adminAuth._internal.reset();
+  const ok = await login(' 12345 ');
+  assert.equal(ok.status, 200);
+  assert.match(ok.body.token, /^as_[a-f0-9]{48}$/);
+  const list = await adminApi('', { token: ok.body.token });
+  assert.equal(list.status, 200);
+
+  assert.equal((await login('11111')).status, 401);
+  for (let i = 0; i < 4; i += 1) await login('00000');
+  // 5 буруу оролдлогын дараа зөв код ч 15 минут ажиллахгүй
+  assert.equal((await login('12345')).status, 429);
+  server.adminAuth._internal.perIp.clear();
 });
 
 test('хадгалсан өгөгдлөө дахин ачаална', async () => {

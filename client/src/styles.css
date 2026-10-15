@@ -2853,7 +2853,7 @@ code {
   right: 0;
   bottom: calc(100% + 4px);
   z-index: 5;
-  min-width: 150px;
+  min-width: 180px;
   padding: 6px;
   border-radius: 14px;
   background: var(--surface-2);
@@ -2861,6 +2861,7 @@ code {
   box-shadow: var(--shadow);
 }
 .cf-menu button {
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 10px;

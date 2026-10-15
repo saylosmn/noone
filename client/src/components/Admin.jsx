@@ -7,6 +7,9 @@ import { Icon, Logo } from './Icon.jsx';
 import { ConfirmDialog, Modal } from './Modal.jsx';
 
 const TOKEN_KEY = 'noone.adminToken';
+
+/** Админ нэвтэрсэн бол нууц хана дээрээс шууд устгах боломжтой */
+export const adminSessionToken = () => session.get(TOKEN_KEY, '');
 const reasonLabel = (id) => CONFESSION_REPORT_REASONS.find((r) => r.id === id)?.label ?? id;
 
 class AdminError extends Error {
@@ -16,7 +19,28 @@ class AdminError extends Error {
   }
 }
 
-async function adminRequest(token, path = '', { method = 'GET', body } = {}) {
+async function adminLogin(password) {
+  let res;
+  try {
+    res = await fetch(apiUrl('/api/admin/auth/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+      signal: AbortSignal.timeout(70000),
+    });
+  } catch {
+    throw new AdminError(0, 'network');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) {
+    const err = new AdminError(res.status, data.error || 'error');
+    err.retryAfterMs = data.retryAfterMs;
+    throw err;
+  }
+  return data.token;
+}
+
+export async function adminRequest(token, path = '', { method = 'GET', body } = {}) {
   let res;
   try {
     res = await fetch(apiUrl(`/api/admin/confessions${path}`), {
@@ -36,25 +60,31 @@ async function adminRequest(token, path = '', { method = 'GET', body } = {}) {
 }
 
 const errorText = (err) => {
-  if (err.status === 401) return 'Токен буруу байна.';
-  if (err.status === 429) return 'Хэт олон буруу оролдлого. 15 минутын дараа дахин оролдоно уу.';
+  if (err.message === 'wrong_password') return 'Код буруу байна.';
+  if (err.message === 'not_configured') return 'Серверт ADMIN_PASSWORD тохируулаагүй байна (Render → Environment).';
+  if (err.status === 401) return 'Нэвтрэх хугацаа дууссан. Дахин нэвтэрнэ үү.';
+  if (err.status === 429) {
+    const min = Math.max(1, Math.ceil((err.retryAfterMs || 900000) / 60000));
+    return `Хэт олон буруу оролдлого. ${min} минутын дараа дахин оролдоно уу.`;
+  }
   if (err.status === 0) return 'Сервертэй холбогдож чадсангүй (Render сэрж байж магадгүй).';
   return 'Алдаа гарлаа. Дахин оролдоно уу.';
 };
 
 // ---------------- Нэвтрэх ----------------
 function Login({ onLogin }) {
-  const [token, setToken] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (e) => {
     e.preventDefault();
-    if (!token.trim() || busy) return;
+    if (!code.trim() || busy) return;
     setBusy(true);
     setError('');
     try {
-      const data = await adminRequest(token.trim(), '?filter=reported');
-      onLogin(token.trim(), data);
+      const token = await adminLogin(code.trim());
+      const data = await adminRequest(token, '?filter=all');
+      onLogin(token, data);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -68,20 +98,18 @@ function Login({ onLogin }) {
           <Icon name="shield" size={26} />
         </span>
         <h1>Хяналтын хэсэг</h1>
-        <p className="hint">
-          Render → <b>noone-server</b> → Environment хэсгийн <code>ADMIN_TOKEN</code>-ийг оруулна уу.
-        </p>
+        <p className="hint">Админы нууц кодоо оруулна уу.</p>
         <input
-          className="text-input"
+          className="text-input admin-code"
           type="password"
           autoComplete="current-password"
-          placeholder="Админ токен"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
+          placeholder="Нууц код"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
           autoFocus
         />
         {error && <p className="compose-error">{error}</p>}
-        <button type="submit" className="btn primary block" disabled={busy || !token.trim()}>
+        <button type="submit" className="btn primary block" disabled={busy || !code.trim()}>
           {busy ? 'Шалгаж байна…' : 'Нэвтрэх'}
         </button>
       </form>
@@ -94,7 +122,6 @@ function AdminItem({ item, onAction }) {
   const tag = tagInfo(item.tag);
   let status;
   if (item.hidden) status = <span className="adm-badge bad">{item.hiddenBy === 'reports' ? 'Мэдээллээр нуугдсан' : 'Нуугдсан'}</span>;
-  else if (item.pending) status = <span className="adm-badge warn">Хүлээгдэж буй</span>;
   else status = <span className="adm-badge ok">Нийтлэгдсэн</span>;
 
   return (
@@ -123,9 +150,9 @@ function AdminItem({ item, onAction }) {
         {item.authorBanned && <span className="adm-badge bad">Хориглогдсон</span>}
       </p>
       <div className="adm-actions">
-        {(item.pending || item.hidden || item.reports > 0) && (
+        {(item.hidden || item.reports > 0) && (
           <button type="button" className="btn sm ok-btn" onClick={() => onAction('approve', item)}>
-            <Icon name="check" size={16} /> Зөвшөөрөх
+            <Icon name="check" size={16} /> {item.hidden ? 'Сэргээх' : 'Асуудалгүй'}
           </button>
         )}
         {!item.hidden && (
@@ -201,17 +228,16 @@ function BanModal({ item, onClose, onConfirm }) {
 }
 
 const TABS = [
+  ['all', '🆕 Бүх бичлэг', null],
   ['reported', '🚩 Мэдээлэгдсэн', 'reported'],
-  ['pending', '⏳ Хүлээгдэж буй', 'pending'],
-  ['hidden', '🙈 Нуугдсан', 'hidden'],
-  ['all', 'Бүгд', 'total'],
+  ['hidden', '🙈 Нуугдсан', null],
   ['bans', '⛔ Хориг', 'bans'],
 ];
 
 // ---------------- Хяналтын хэсэг ----------------
 export function Admin({ onExit, onToast }) {
   const [token, setToken] = useState(() => session.get(TOKEN_KEY, ''));
-  const [filter, setFilter] = useState('reported');
+  const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [bans, setBans] = useState([]);
@@ -221,6 +247,8 @@ export function Admin({ onExit, onToast }) {
   const reqId = useRef(0);
 
   const logout = useCallback(() => {
+    const t = session.get(TOKEN_KEY, '');
+    if (t) fetch(apiUrl('/api/admin/auth/logout'), { method: 'POST', headers: { Authorization: `Bearer ${t}` } }).catch(() => {});
     session.remove(TOKEN_KEY);
     setToken('');
     setData(null);
@@ -242,10 +270,10 @@ export function Admin({ onExit, onToast }) {
     setLoading(true);
     try {
       if (filter === 'bans') {
-        const [list, summary] = await Promise.all([adminRequest(token, '/bans'), adminRequest(token, '?filter=pending')]);
+        const [list, summary] = await Promise.all([adminRequest(token, '/bans'), adminRequest(token, '?filter=reported')]);
         if (id !== reqId.current) return;
         setBans(list.bans);
-        setData((d) => ({ ...(d || {}), stats: summary.stats, settings: summary.settings, storage: summary.storage, items: [] }));
+        setData((d) => ({ ...(d || {}), stats: summary.stats, storage: summary.storage, items: [] }));
       } else {
         const res = await adminRequest(token, `?filter=${filter}&q=${encodeURIComponent(q)}`);
         if (id !== reqId.current) return;
@@ -282,7 +310,7 @@ export function Admin({ onExit, onToast }) {
   };
 
   const onAction = (kind, item) => {
-    if (kind === 'approve') act(`/${item.id}/approve`, { method: 'POST' }, 'Зөвшөөрөгдлөө.');
+    if (kind === 'approve') act(`/${item.id}/approve`, { method: 'POST' }, item.hidden ? 'Сэргээгдлээ.' : 'Мэдээллийг цэвэрлэлээ.');
     if (kind === 'hide') act(`/${item.id}/hide`, { method: 'POST', body: { hidden: true } }, 'Нуугдлаа.');
     if (kind === 'delete') setConfirmDelete(item);
     if (kind === 'ban') setBanning(item);
@@ -291,12 +319,6 @@ export function Admin({ onExit, onToast }) {
   const closeDelete = useCallback(() => setConfirmDelete(null), []);
   const closeBan = useCallback(() => setBanning(null), []);
 
-  const setModeration = (moderation) =>
-    act(
-      '/settings',
-      { method: 'POST', body: { moderation } },
-      moderation === 'manual' ? 'Одооноос шинэ бичлэг таны зөвшөөрлөөр нийтлэгдэнэ.' : 'Шинэ бичлэг шууд нийтлэгдэнэ.',
-    );
 
   if (!token) {
     return (
@@ -321,7 +343,6 @@ export function Admin({ onExit, onToast }) {
   }
 
   const stats = data?.stats || {};
-  const moderation = data?.settings?.moderation || 'auto';
 
   return (
     <div className="screen admin">
@@ -356,7 +377,7 @@ export function Admin({ onExit, onToast }) {
             ['Нийт', stats.total],
             ['Нийтлэгдсэн', stats.public],
             ['Өнөөдөр', stats.today],
-            ['Хүлээгдэж буй', stats.pending, stats.pending > 0 && 'warn'],
+            ['Хориг', stats.bans],
             ['Мэдээлэгдсэн', stats.reported, stats.reported > 0 && 'bad'],
             ['Нуугдсан', stats.hidden],
           ].map(([label, value, tone]) => (
@@ -367,30 +388,12 @@ export function Admin({ onExit, onToast }) {
           ))}
         </section>
 
-        <section className="card adm-mode">
-          <div>
-            <strong>Нийтлэх горим</strong>
-            <span className="hint">
-              {moderation === 'manual'
-                ? 'Шинэ бичлэг таныг зөвшөөрөх хүртэл зөвхөн бичсэн хүнд харагдана.'
-                : 'Шинэ бичлэг шууд нийтлэгдэнэ. Мэдээлэл ирвэл автоматаар нуугдана.'}
-            </span>
-          </div>
-          <div className="segmented" role="radiogroup" aria-label="Нийтлэх горим">
-            <button type="button" role="radio" aria-checked={moderation === 'auto'} className={moderation === 'auto' ? 'is-active' : ''} onClick={() => setModeration('auto')}>
-              Шууд
-            </button>
-            <button type="button" role="radio" aria-checked={moderation === 'manual'} className={moderation === 'manual' ? 'is-active' : ''} onClick={() => setModeration('manual')}>
-              Шалгаж байж
-            </button>
-          </div>
-        </section>
 
         <div className="tag-filter chips adm-tabs" role="tablist">
           {TABS.map(([id, label, key]) => (
             <button key={id} type="button" role="tab" aria-selected={filter === id} className={`chip ${filter === id ? 'is-active' : ''}`} onClick={() => setFilter(id)}>
               {label}
-              {stats[key] > 0 && <span className="adm-count">{stats[key]}</span>}
+              {key && stats[key] > 0 && <span className="adm-count">{stats[key]}</span>}
             </button>
           ))}
         </div>
@@ -424,9 +427,7 @@ export function Admin({ onExit, onToast }) {
         ) : (
           <section className="adm-list" aria-busy={loading}>
             {data?.items?.length === 0 && (
-              <p className="wall-empty">
-                {filter === 'reported' ? '🎉 Мэдээлэгдсэн бичлэг алга.' : filter === 'pending' ? 'Хүлээгдэж буй бичлэг алга.' : 'Бичлэг алга.'}
-              </p>
+              <p className="wall-empty">{filter === 'reported' ? '🎉 Мэдээлэгдсэн бичлэг алга.' : 'Бичлэг алга.'}</p>
             )}
             {data?.items?.map((item) => <AdminItem key={item.id} item={item} onAction={onAction} />)}
           </section>
