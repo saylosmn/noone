@@ -69,8 +69,8 @@ async function connect(auth = {}) {
   return socket;
 }
 
-async function join(socket, gender, interests = []) {
-  const res = await emit(socket, 'queue:join', { gender, interests, adultConfirmed: true });
+async function join(socket, gender, interests = [], school = null) {
+  const res = await emit(socket, 'queue:join', { gender, interests, school, adultConfirmed: true });
   assert.equal(res.ok, true, `queue:join амжилтгүй: ${res.error}`);
   return res;
 }
@@ -316,6 +316,23 @@ test('health болон push config API', async () => {
   assert.ok(push.reason.includes('VAPID'));
   const admin = await fetch(`${url}/api/admin/reports`);
   assert.equal(admin.status, 404);
+});
+
+test('нэг сургуулийнхныг ижил сонирхлоос ч түрүүлж холбоно', async () => {
+  const interestFan = await connect();
+  const schoolmate = await connect();
+  await join(interestFan, 'male', ['music', 'tech']);
+  await join(schoolmate, 'male', [], 'must');
+  const f = await connect();
+  const found = waitFor(f, 'match:found');
+  const mateFound = waitFor(schoolmate, 'match:found');
+  await join(f, 'female', ['music'], 'must');
+  const match = await found;
+  assert.equal((await mateFound).roomId, match.roomId);
+  assert.equal(match.sharedSchool, 'must');
+  const bad = await connect();
+  const r = await emit(bad, 'queue:join', { gender: 'male', school: 'hack', adultConfirmed: true });
+  assert.equal(r.ok, true); // буруу сургууль үл тоогдоно
 });
 
 test('стикер илгээх, буруу стикер татгалзах', async () => {

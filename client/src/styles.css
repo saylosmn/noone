@@ -1448,7 +1448,39 @@ code {
 }
 
 
-/* ---------- Текст оролт ---------- */
+/* ---------- Сургууль сонголт, текст оролт ---------- */
+.select-wrap {
+  position: relative;
+}
+.select {
+  appearance: none;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 44px 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.select option {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.select-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+}
 .text-input {
   width: 100%;
   min-height: 46px;
@@ -1470,6 +1502,9 @@ code {
 .platform-chips .chip {
   min-height: 36px;
   font-size: 13.5px;
+}
+.school-chip {
+  background: rgba(var(--accent-rgb), 0.22);
 }
 
 /* ---------- Мессежийн үйлдэл, reaction ---------- */

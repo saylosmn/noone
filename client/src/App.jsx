@@ -30,6 +30,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => ({
     gender: null,
     interests: [],
+    school: null,
     adultConfirmed: false,
     ...session.get(PROFILE_KEY, {}),
   }));

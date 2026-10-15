@@ -8,6 +8,22 @@ export const INTERESTS = [
 
 export const interestLabel = (id) => INTERESTS.find((i) => i.id === id)?.label ?? id;
 
+export const SCHOOLS = [
+  { id: 'must', label: 'ШУТИС' },
+  { id: 'num', label: 'МУИС' },
+  { id: 'ufe', label: 'СЭЗИС' },
+  { id: 'mnums', label: 'АШУҮИС' },
+  { id: 'msue', label: 'МУБИС' },
+  { id: 'muls', label: 'ХААИС' },
+  { id: 'otgontenger', label: 'Отгонтэнгэр' },
+  { id: 'ikhzasag', label: 'Их Засаг' },
+  { id: 'mandakh', label: 'Мандах' },
+  { id: 'huree', label: 'Хүрээ' },
+  { id: 'ubis', label: 'Улаанбаатар ИС' },
+  { id: 'other', label: 'Бусад сургууль' },
+];
+export const schoolLabel = (id) => SCHOOLS.find((s) => s.id === id)?.label ?? '';
+
 export const REACTIONS = ['❤️', '😂', '👍', '😮', '😢', '🔥'];
 
 export const CONTACT_PLATFORMS = [
