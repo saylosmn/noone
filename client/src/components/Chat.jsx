@@ -1,0 +1,676 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ENDED_TEXT, MAX_MESSAGE_LENGTH, REPORT_REASONS, errorText, interestLabel } from '../lib/constants.js';
+import { formatTime, snippet } from '../lib/format.js';
+import { pickIcebreaker } from '../lib/icebreakers.js';
+import { Icon } from './Icon.jsx';
+import { ConfirmDialog, Modal } from './Modal.jsx';
+import { RatingCard } from './Feedback.jsx';
+
+const isCoarse = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+
+function Avatar({ name }) {
+  const letter = (name.split(' ')[1] || name)[0] || '?';
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+  return (
+    <span className="avatar" style={{ '--h': hash }} aria-hidden="true">
+      {letter}
+    </span>
+  );
+}
+
+// ---------------- Цэс ----------------
+function Menu({ items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (!ref.current?.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return (
+    <div className="menu-wrap" ref={ref}>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Бусад үйлдэл"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name="more" />
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          {items
+            .filter((i) => !i.hidden)
+            .map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className={`menu-item ${item.danger ? 'is-danger' : ''}`}
+                onClick={() => {
+                  setOpen(false);
+                  item.onClick();
+                }}
+              >
+                <Icon name={item.icon} size={18} />
+                {item.label}
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Мессеж ----------------
+function Bubble({ message, original, partnerName, onReply, onJump, onRetry, grouped, highlighted }) {
+  const rowRef = useRef(null);
+  const touch = useRef(null);
+  const canReply = Boolean(onReply) && !message.system && message.status !== 'sending' && message.status !== 'failed';
+
+  const onTouchStart = (e) => {
+    if (!canReply) return;
+    const t = e.touches[0];
+    touch.current = { x: t.clientX, y: t.clientY, dx: 0, locked: false };
+  };
+  const onTouchMove = (e) => {
+    const s = touch.current;
+    if (!s) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    if (!s.locked && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) {
+      touch.current = null;
+      if (rowRef.current) rowRef.current.style.transform = '';
+      return;
+    }
+    if (dx > 6) s.locked = true;
+    s.dx = Math.max(0, Math.min(dx, 80));
+    if (rowRef.current) rowRef.current.style.transform = `translateX(${s.dx}px)`;
+  };
+  const onTouchEnd = () => {
+    const s = touch.current;
+    touch.current = null;
+    if (rowRef.current) rowRef.current.style.transform = '';
+    if (s && s.dx > 56) {
+      navigator.vibrate?.(10);
+      onReply(message);
+    }
+  };
+
+  if (message.system) {
+    return (
+      <div className="system-note" role="note">
+        {message.text}
+      </div>
+    );
+  }
+
+  const quoteAuthor = original ? (original.mine ? 'Та' : partnerName) : '';
+  return (
+    <div
+      id={`msg-${message.id}`}
+      ref={rowRef}
+      className={`msg-row ${message.mine ? 'mine' : 'theirs'} ${grouped ? 'grouped' : ''} ${highlighted ? 'is-flash' : ''}`}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      <div className={`bubble ${message.status === 'failed' ? 'is-failed' : ''}`}>
+        {message.replyTo && (
+          <button
+            type="button"
+            className="quote"
+            onClick={() => original && onJump(message.replyTo)}
+            disabled={!original}
+            aria-label={original ? `Эх мессеж рүү очих: ${snippet(original.text, 40)}` : 'Эх мессеж олдсонгүй'}
+          >
+            <span className="quote-author">{quoteAuthor || 'Хариулт'}</span>
+            <span className="quote-text">{original ? snippet(original.text, 80) : 'Эх мессеж олдсонгүй'}</span>
+          </button>
+        )}
+        <p className="msg-text">{message.text}</p>
+        <span className="msg-meta">
+          {formatTime(message.ts)}
+          {message.mine && message.status === 'sending' && <Icon name="clock" size={12} />}
+          {message.mine && message.status === 'sent' && <Icon name="check" size={12} strokeWidth={3} />}
+          {message.status === 'failed' && <Icon name="alert" size={12} />}
+        </span>
+      </div>
+      {canReply && (
+        <button type="button" className="reply-btn" aria-label="Хариулах" title="Хариулах" onClick={() => onReply(message)}>
+          <Icon name="reply" size={16} />
+        </button>
+      )}
+      {message.status === 'failed' && (
+        <button type="button" className="retry-btn" onClick={() => onRetry(message.id)}>
+          <span title={errorText(message.error)}>Илгээгдсэнгүй</span> · Дахин оролдох
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div className="msg-row theirs typing-row" aria-label="Бичиж байна">
+      <div className="bubble typing-bubble">
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+  );
+}
+
+function MessageList({ messages, partnerTyping, partnerName, onReply, onRetry, jumpRef, footer }) {
+  const listRef = useRef(null);
+  const atBottomRef = useRef(true);
+  const [newCount, setNewCount] = useState(0);
+  const [flashId, setFlashId] = useState(null);
+  const prevLen = useRef(messages.length);
+  const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    setNewCount(0);
+  }, []);
+
+  const jumpTo = useCallback((id) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashId(null);
+    requestAnimationFrame(() => setFlashId(id));
+    setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1600);
+  }, []);
+
+  useEffect(() => {
+    jumpRef.current = { jumpTo, scrollToBottom };
+  }, [jumpRef, jumpTo, scrollToBottom]);
+
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (atBottomRef.current) setNewCount(0);
+  };
+
+  useLayoutEffect(() => {
+    const added = messages.slice(prevLen.current);
+    prevLen.current = messages.length;
+    if (!added.length) return;
+    const mineAdded = added.some((m) => m.mine);
+    if (atBottomRef.current || mineAdded) {
+      scrollToBottom(added.length < 3);
+    } else {
+      setNewCount((n) => n + added.filter((m) => !m.mine && !m.system).length);
+    }
+  }, [messages, scrollToBottom]);
+
+  useLayoutEffect(() => {
+    if (partnerTyping && atBottomRef.current) scrollToBottom();
+  }, [partnerTyping, scrollToBottom]);
+
+  // Чат дуусахад төгсгөлийн карт харагдахаар доош гүйлгэнэ
+  const hasFooter = Boolean(footer);
+  useLayoutEffect(() => {
+    if (hasFooter) requestAnimationFrame(() => scrollToBottom(false));
+  }, [hasFooter, scrollToBottom]);
+
+  return (
+    <div className="message-area">
+      <div className="message-list" ref={listRef} onScroll={onScroll} role="log" aria-live="polite" aria-label="Чатын мессежүүд">
+        <div className="message-list-inner">
+          {messages.map((m, idx) => {
+            const prev = messages[idx - 1];
+            const grouped = prev && !prev.system && !m.system && prev.mine === m.mine && m.ts - prev.ts < 60000;
+            return (
+              <Bubble
+                key={m.id}
+                message={m}
+                original={m.replyTo ? byId.get(m.replyTo) : null}
+                partnerName={partnerName}
+                onReply={onReply}
+                onJump={jumpTo}
+                onRetry={onRetry}
+                grouped={grouped}
+                highlighted={flashId === m.id}
+              />
+            );
+          })}
+          {partnerTyping && <TypingBubble />}
+          {footer}
+        </div>
+      </div>
+      {newCount > 0 && (
+        <button type="button" className="new-pill" onClick={() => scrollToBottom()}>
+          <Icon name="arrowDown" size={16} /> {newCount} шинэ мессеж
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Бичих хэсэг ----------------
+function Composer({ draft, setDraft, onSend, onTyping, replyTo, replyAuthor, onCancelReply, onJumpReply, inputRef, disabled, partnerOnline }) {
+  const typingRef = useRef(false);
+  const typingTimer = useRef(null);
+  const composing = useRef(false);
+
+  const autosize = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  };
+  useLayoutEffect(autosize, [draft, inputRef]);
+
+  const stopTyping = useCallback(() => {
+    clearTimeout(typingTimer.current);
+    if (typingRef.current) {
+      typingRef.current = false;
+      onTyping(false);
+    }
+  }, [onTyping]);
+
+  useEffect(() => stopTyping, [stopTyping]);
+
+  const onChange = (e) => {
+    setDraft(e.target.value);
+    if (e.target.value.trim()) {
+      if (!typingRef.current) {
+        typingRef.current = true;
+        onTyping(true);
+      }
+      clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(stopTyping, 2500);
+    } else {
+      stopTyping();
+    }
+  };
+
+  const length = [...draft].length;
+  const tooLong = length > MAX_MESSAGE_LENGTH;
+  const canSend = !disabled && draft.trim() && !tooLong;
+
+  const submit = () => {
+    if (!canSend) return;
+    stopTyping();
+    onSend(draft);
+    setDraft('');
+    inputRef.current?.focus();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape' && replyTo) {
+      e.preventDefault();
+      onCancelReply();
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !composing.current && !e.nativeEvent.isComposing && !isCoarse()) {
+      e.preventDefault();
+      submit();
+    }
+  };
+
+  return (
+    <div className="composer-wrap">
+      {replyTo && (
+        <div className="reply-preview">
+          <button type="button" className="reply-preview-body" onClick={onJumpReply} title="Эх мессеж рүү очих">
+            <Icon name="reply" size={16} />
+            <span className="rp-content">
+              <span className="rp-label">Хариулж байна · {replyAuthor}</span>
+              <span className="rp-text">{snippet(replyTo.text, 100)}</span>
+            </span>
+          </button>
+          <button type="button" className="icon-btn sm" aria-label="Хариултыг цуцлах" onClick={onCancelReply}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+      )}
+      <form
+        className="composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <textarea
+          ref={inputRef}
+          className="composer-input"
+          rows={1}
+          value={draft}
+          onChange={onChange}
+          onKeyDown={onKeyDown}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={() => {
+            composing.current = false;
+          }}
+          onBlur={stopTyping}
+          placeholder={partnerOnline ? 'Мессеж бичих…' : 'Нөгөө хүн түр салсан байна…'}
+          aria-label="Мессеж бичих"
+          maxLength={MAX_MESSAGE_LENGTH + 200}
+          disabled={disabled}
+          enterKeyHint="send"
+        />
+        {length > MAX_MESSAGE_LENGTH - 200 && (
+          <span className={`char-count ${tooLong ? 'is-over' : ''}`}>
+            {length}/{MAX_MESSAGE_LENGTH}
+          </span>
+        )}
+        <button type="submit" className="send-btn" disabled={!canSend} aria-label="Илгээх">
+          <Icon name="send" size={20} />
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ---------------- Мэдээлэх цонх ----------------
+function ReportModal({ open, onClose, onSubmit }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setReason('');
+      setBusy(false);
+    }
+  }, [open]);
+  const submit = async () => {
+    if (!reason || busy) return;
+    setBusy(true);
+    const ok = await onSubmit(reason);
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Мэдээлэх"
+      footer={
+        <>
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Цуцлах
+          </button>
+          <button type="button" className="btn danger" disabled={!reason || busy} onClick={submit}>
+            {busy ? 'Илгээж байна…' : 'Мэдээлэх'}
+          </button>
+        </>
+      }
+    >
+      <fieldset className="reason-list">
+        <legend>Шалтгаанаа сонгоно уу</legend>
+        {REPORT_REASONS.map((r) => (
+          <label key={r.id} className={`reason ${reason === r.id ? 'is-active' : ''}`}>
+            <input type="radio" name="report-reason" value={r.id} checked={reason === r.id} onChange={() => setReason(r.id)} />
+            <span className="radio-dot" aria-hidden="true" />
+            {r.label}
+          </label>
+        ))}
+      </fieldset>
+      <p className="hint">
+        Чатын бичвэр илгээгдэхгүй — зөвхөн шалтгаан, цаг хугацаа бүртгэгдэнэ. Мэдээлсний дараа энэ хүн автоматаар
+        блоклогдож, чат дуусна.
+      </p>
+    </Modal>
+  );
+}
+
+// ---------------- Чатын дэлгэц ----------------
+export function Chat({ state, actions, settings, onOpenSettings }) {
+  const { room, messages, partnerTyping, phase, ended, ratings, conn } = state;
+  const partnerName = room?.partner.nickname || 'Үл таних';
+  const partnerOnline = Boolean(room?.partner.online);
+  const [replyTo, setReplyTo] = useState(null);
+  const [draft, setDraft] = useState('');
+  const [dialog, setDialog] = useState(null); // 'block' | 'leave' | 'report'
+  const [suggestion, setSuggestion] = useState(null);
+  const lastSuggestAt = useRef(0);
+  const inputRef = useRef(null);
+  const jumpRef = useRef({});
+  const chatting = phase === 'chatting';
+
+  // Өрөө солигдоход төлөвийг цэвэрлэнэ
+  useEffect(() => {
+    setReplyTo(null);
+    setDraft('');
+    setSuggestion(null);
+    lastSuggestAt.current = 0;
+  }, [room?.roomId]);
+
+  useEffect(() => {
+    if (!chatting) setReplyTo(null);
+  }, [chatting]);
+
+  // Мэдэгдэл дээр дарахад доош гүйлгэж, бичих хэсэг рүү
+  useEffect(() => {
+    const onOpen = () => {
+      jumpRef.current.scrollToBottom?.(false);
+      inputRef.current?.focus();
+    };
+    window.addEventListener('noone:open-chat', onOpen);
+    return () => window.removeEventListener('noone:open-chat', onOpen);
+  }, []);
+
+  // Яриа эхлүүлэх санааг хааяа санал болгоно
+  const userMessageCount = messages.filter((m) => !m.system).length;
+  useEffect(() => {
+    setSuggestion(null);
+  }, [userMessageCount]);
+  useEffect(() => {
+    if (!settings.icebreakers || !chatting || !room) {
+      setSuggestion(null);
+      return undefined;
+    }
+    const tick = () => {
+      const now = Date.now();
+      if (draft.trim()) return;
+      const real = messages.filter((m) => !m.system);
+      const lastTs = real.length ? real[real.length - 1].ts : room.startedAt;
+      const quiet = now - lastTs;
+      const due = real.length === 0 ? quiet > 1200 : quiet > 30000;
+      if (due && now - lastSuggestAt.current > 90000) {
+        lastSuggestAt.current = now;
+        setSuggestion(pickIcebreaker(room.sharedInterests));
+      }
+    };
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [settings.icebreakers, chatting, room, messages, draft]);
+
+  const startReply = useCallback((m) => {
+    setReplyTo(m);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const send = (text) => {
+    actions.sendMessage(text, replyTo?.id || null);
+    setReplyTo(null);
+    setSuggestion(null);
+  };
+
+  let statusText = 'Онлайн';
+  let statusClass = 'is-online';
+  if (!chatting) {
+    statusText = 'Чат дууссан';
+    statusClass = 'is-ended';
+  } else if (conn !== 'online') {
+    statusText = 'Таны холболт тасарсан';
+    statusClass = 'is-away';
+  } else if (!partnerOnline) {
+    statusText = 'Салсан, хүлээж байна…';
+    statusClass = 'is-away';
+  } else if (partnerTyping) {
+    statusText = 'Бичиж байна…';
+    statusClass = 'is-typing';
+  }
+
+  const endedPartnerSide = ended && ['partner_left', 'partner_disconnected', 'you_left', 'connection_lost'].includes(ended.reason);
+
+  const endPanel = !chatting && ended && (
+    <div className="end-card" role="status">
+      <div className="end-title">Чат дууслаа</div>
+      <p className="end-reason">{ENDED_TEXT[ended.reason] || 'Чат дууслаа.'}</p>
+      {ended.roomId && (
+        <RatingCard roomId={ended.roomId} rating={ratings[ended.roomId]} onRate={actions.rate} />
+      )}
+      <div className="end-actions">
+        <button type="button" className="btn primary" onClick={actions.next}>
+          <Icon name="next" size={18} /> Дараагийн хүн хайх
+        </button>
+        <button type="button" className="btn ghost" onClick={actions.goHome}>
+          <Icon name="home" size={18} /> Нүүр хуудас
+        </button>
+      </div>
+      {endedPartnerSide && (
+        <div className="end-links">
+          <button type="button" className="link-btn" onClick={() => setDialog('report')}>
+            <Icon name="flag" size={14} /> Мэдээлэх
+          </button>
+          <button type="button" className="link-btn" onClick={() => setDialog('block')}>
+            <Icon name="block" size={14} /> Блоклох
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="screen chat">
+      <header className="chat-head">
+        <div className="peer">
+          <Avatar name={partnerName} />
+          <div className="peer-info">
+            <div className="peer-name">{partnerName}</div>
+            <div className={`peer-status ${statusClass}`}>
+              <span className="dot" aria-hidden="true" />
+              {statusText}
+            </div>
+          </div>
+        </div>
+        <div className="head-actions">
+          {chatting && (
+            <button type="button" className="btn next-btn" onClick={actions.next} aria-label="Дараагийн хүн" title="Дараагийн хүн">
+              <Icon name="next" size={18} />
+              <span className="lbl-long">Дараагийн хүн</span>
+              <span className="lbl-short">Дараах</span>
+            </button>
+          )}
+          <Menu
+            items={[
+              { label: 'Мэдээлэх', icon: 'flag', onClick: () => setDialog('report'), hidden: !chatting && !endedPartnerSide },
+              { label: 'Блоклох', icon: 'block', onClick: () => setDialog('block'), danger: true, hidden: !chatting && !endedPartnerSide },
+              { label: 'Чат дуусгах', icon: 'logout', onClick: () => setDialog('leave'), hidden: !chatting },
+              { label: 'Нүүр хуудас', icon: 'home', onClick: actions.goHome, hidden: chatting },
+              { label: 'Тохиргоо', icon: 'settings', onClick: onOpenSettings },
+            ]}
+          />
+        </div>
+      </header>
+
+      {room?.sharedInterests?.length > 0 && (
+        <div className="shared-bar">
+          Ижил сонирхол:
+          {room.sharedInterests.map((i) => (
+            <span key={i} className="mini-chip">
+              {interestLabel(i)}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <MessageList
+        messages={messages}
+        partnerTyping={partnerTyping && chatting}
+        partnerName={partnerName}
+        onReply={chatting ? startReply : null}
+        onRetry={actions.retryMessage}
+        jumpRef={jumpRef}
+        footer={endPanel}
+      />
+
+      {chatting && (
+        <div className="chat-bottom">
+          {suggestion && !replyTo && (
+            <div className="suggestion">
+              <Icon name="sparkle" size={16} />
+              <button
+                type="button"
+                className="suggestion-text"
+                onClick={() => {
+                  setDraft(suggestion);
+                  setSuggestion(null);
+                  requestAnimationFrame(() => inputRef.current?.focus());
+                }}
+                title="Бичих хэсэгт оруулах"
+              >
+                {suggestion}
+              </button>
+              <button
+                type="button"
+                className="icon-btn sm"
+                aria-label="Өөр санаа"
+                onClick={() => setSuggestion((s) => pickIcebreaker(room.sharedInterests, s))}
+              >
+                <Icon name="refresh" size={16} />
+              </button>
+              <button type="button" className="icon-btn sm" aria-label="Санааг хаах" onClick={() => setSuggestion(null)}>
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          )}
+          <Composer
+            draft={draft}
+            setDraft={setDraft}
+            onSend={send}
+            onTyping={actions.setTyping}
+            replyTo={replyTo}
+            replyAuthor={replyTo?.mine ? 'Өөрийн мессеж' : partnerName}
+            onCancelReply={() => setReplyTo(null)}
+            onJumpReply={() => replyTo && jumpRef.current.jumpTo?.(replyTo.id)}
+            inputRef={inputRef}
+            disabled={false}
+            partnerOnline={partnerOnline}
+          />
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={dialog === 'block'}
+        title="Блоклох уу?"
+        body="Чат дуусч, энэ хүнтэй дахин холбогдохгүй. Нөгөө хүнд блоклосныг мэдэгдэхгүй."
+        confirmLabel="Блоклох"
+        onConfirm={actions.block}
+        onClose={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        open={dialog === 'leave'}
+        title="Чатыг дуусгах уу?"
+        body="Чат дуусч, бүх мессеж арилна. Дараа нь шинэ хүн хайх боломжтой."
+        confirmLabel="Дуусгах"
+        tone="primary"
+        onConfirm={actions.leave}
+        onClose={() => setDialog(null)}
+      />
+      <ReportModal open={dialog === 'report'} onClose={() => setDialog(null)} onSubmit={actions.report} />
+    </div>
+  );
+}

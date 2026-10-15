@@ -1,0 +1,37 @@
+# Render Blueprint — backend (Express + Socket.IO)
+# Render → New → Blueprint → энэ repo-г сонгоход автоматаар үүснэ.
+services:
+  - type: web
+    name: noone-server
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "true"
+      # Frontend (Vercel) хаяг(ууд), таслалаар. Custom домэйн нэмбэл энд нэмнэ.
+      - key: CLIENT_ORIGIN
+        value: https://noone.vercel.app,http://localhost:5173
+      # Vercel-ийн preview хаягуудыг (*.vercel.app) зөвшөөрөх
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "true"
+      - key: SERVE_CLIENT
+        value: "false"
+      - key: REPORT_HASH_SALT
+        generateValue: true
+      - key: ADMIN_TOKEN
+        generateValue: true
+      # Web Push хэрэгтэй бол `npm run vapid`-ээр үүсгээд нэмнэ (хоосон бол ажиллахгүй)
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:admin@example.com
