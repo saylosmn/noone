@@ -17,7 +17,7 @@ export function WallLink({ onClick, variant = 'card' }) {
       <span className="wall-link-emoji" aria-hidden="true">🤫</span>
       <span className="wall-link-body">
         <strong>Нууц хана</strong>
-        <span>{variant === 'card' ? 'Бусдын нэргүй нууцыг уншиж, өөрийнхөө нууцыг бич' : 'Хүлээх зуураа бусдын нэргүй нууцыг уншаарай'}</span>
+        <span>{variant === 'card' ? 'Бусдын нэргүй нууцыг уншиж, нууц зүйлс бич' : 'Хүлээх зуураа бусдын нэргүй нууцыг уншаарай'}</span>
       </span>
       <Icon name="chevronDown" size={18} className="wall-link-arrow" />
     </button>

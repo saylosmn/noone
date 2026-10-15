@@ -172,7 +172,7 @@ function ComposeModal({ open, onClose, profile, onProfile, onPosted, onToast }) 
     <Modal
       open={open}
       onClose={onClose}
-      title="Нууцаа бичих"
+      title="Нууц зүйлс бич"
       footer={
         <>
           <button type="button" className="btn ghost" onClick={onClose}>
@@ -590,7 +590,7 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
           </h1>
           <p className="hero-sub">Хэнд ч хэлж чадаагүй зүйлээ нэргүйгээр бич. Бусдын нууцыг уншиж, ❤️ дар.</p>
           <button type="button" className="compose-cta" onClick={() => setComposeOpen(true)}>
-            <span className="compose-cta-fake">Чиний нууц юу вэ?…</span>
+            <span className="compose-cta-fake">Нууц зүйлс бич…</span>
             <span className="btn sm primary" aria-hidden="true">
               <Icon name="plus" size={16} /> Бичих
             </span>
@@ -655,7 +655,7 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
               <p>
                 {sort === 'top' ? 'Энэ 7 хоногт like авсан нууц алга.' : 'Энд одоохондоо хоосон байна.'}
                 <br />
-                Анхны нууцаа бичих үү?
+                Нууц зүйлс бич!
               </p>
               <button type="button" className="btn primary sm" onClick={() => setComposeOpen(true)}>
                 <Icon name="plus" size={16} /> Бичих
@@ -684,7 +684,7 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
         )}
       </main>
 
-      <button type="button" className="wall-fab" aria-label="Нууцаа бичих" onClick={() => setComposeOpen(true)}>
+      <button type="button" className="wall-fab" aria-label="Нууц зүйлс бич" onClick={() => setComposeOpen(true)}>
         <Icon name="plus" size={26} strokeWidth={2.4} />
       </button>
 
