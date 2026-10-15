@@ -132,38 +132,72 @@ function ContactCard({ contact }) {
   );
 }
 
-function ReactionPicker({ current, onPick, onClose, side }) {
+function ReactionPicker({ current, onPick, onClose, side, onReply, onCopy }) {
   const ref = useRef(null);
   useEffect(() => {
     const onDown = (e) => {
       if (!ref.current?.contains(e.target)) onClose();
     };
     const onKey = (e) => e.key === 'Escape' && onClose();
-    document.addEventListener('pointerdown', onDown);
+    // Нээсэн даруйд ирэх "click"-ийг алгасахын тулд дараагийн tick-д бүртгэнэ
+    const t = setTimeout(() => document.addEventListener('pointerdown', onDown), 0);
     document.addEventListener('keydown', onKey);
-    ref.current?.querySelector('button')?.focus();
+    ref.current?.querySelector('button')?.focus({ preventScroll: true });
     return () => {
+      clearTimeout(t);
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [onClose]);
   return (
-    <div className={`reaction-picker ${side}`} ref={ref} role="menu" aria-label="Reaction сонгох">
-      {REACTIONS.map((emoji) => (
-        <button
-          key={emoji}
-          type="button"
-          role="menuitem"
-          className={`reaction-option ${current === emoji ? 'is-active' : ''}`}
-          aria-label={`${emoji} reaction`}
-          onClick={() => {
-            onPick(emoji);
-            onClose();
-          }}
-        >
-          {emoji}
-        </button>
-      ))}
+    <div className={`reaction-picker ${side}`} ref={ref} role="menu" aria-label="Мессежийн үйлдэл">
+      <div className="reaction-row">
+        {REACTIONS.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            role="menuitem"
+            className={`reaction-option ${current === emoji ? 'is-active' : ''}`}
+            aria-label={`${emoji} reaction`}
+            onClick={() => {
+              onPick(emoji);
+              onClose();
+            }}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {(onReply || onCopy) && (
+        <div className="sheet-actions">
+          {onReply && (
+            <button
+              type="button"
+              role="menuitem"
+              className="sheet-action"
+              onClick={() => {
+                onReply();
+                onClose();
+              }}
+            >
+              <Icon name="reply" size={18} /> Хариулах
+            </button>
+          )}
+          {onCopy && (
+            <button
+              type="button"
+              role="menuitem"
+              className="sheet-action"
+              onClick={() => {
+                onCopy();
+                onClose();
+              }}
+            >
+              <Icon name="copy" size={18} /> Хуулах
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -178,47 +212,40 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
   const canReact = Boolean(onReact) && live && !message.id.startsWith('tmp_');
 
   const clearPress = () => clearTimeout(pressTimer.current);
+  const [sheet, setSheet] = useState(false); // утсан дээрх удаан дарах цэс
+  const openSheet = () => {
+    if (!canReact && !canReply) return;
+    navigator.vibrate?.(15);
+    setSheet(true);
+  };
+  // Хажуу тийш шудрах үйлдэл байхгүй — зөвхөн удаан дарах (iOS) / contextmenu (Android, баруун товч)
   const onTouchStart = (e) => {
-    if (!canReply && !canReact) return;
+    if (!canReact && !canReply) return;
     const t = e.touches[0];
-    touch.current = { x: t.clientX, y: t.clientY, dx: 0, locked: false };
-    // Удаан дарахад reaction сонгогч гарна
-    if (canReact) {
-      pressTimer.current = setTimeout(() => {
-        touch.current = null;
-        navigator.vibrate?.(15);
-        setPicker(true);
-      }, 480);
-    }
+    touch.current = { x: t.clientX, y: t.clientY };
+    clearPress();
+    pressTimer.current = setTimeout(() => {
+      touch.current = null;
+      openSheet();
+    }, 450);
   };
   const onTouchMove = (e) => {
-    const s = touch.current;
-    if (!s) return;
+    const s0 = touch.current;
+    if (!s0) return;
     const t = e.touches[0];
-    const dx = t.clientX - s.x;
-    const dy = t.clientY - s.y;
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearPress();
-    if (!canReply) return;
-    if (!s.locked && Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) {
+    if (Math.abs(t.clientX - s0.x) > 8 || Math.abs(t.clientY - s0.y) > 8) {
+      clearPress();
       touch.current = null;
-      if (rowRef.current) rowRef.current.style.transform = '';
-      return;
     }
-    if (dx > 6) s.locked = true;
-    s.dx = Math.max(0, Math.min(dx, 80));
-    if (rowRef.current) rowRef.current.style.transform = `translateX(${s.dx}px)`;
   };
   const onTouchEnd = () => {
     clearPress();
-    const s = touch.current;
     touch.current = null;
-    if (rowRef.current) rowRef.current.style.transform = '';
-    if (s && s.dx > 56 && canReply) {
-      navigator.vibrate?.(10);
-      onReply(message);
-    }
   };
   useEffect(() => clearPress, []);
+  const copyText = message.text
+    ? () => navigator.clipboard?.writeText(message.text).catch(() => {})
+    : null;
 
   if (message.contact) return <ContactCard contact={message.contact} />;
   if (message.system) {
@@ -243,17 +270,25 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
       onContextMenu={(e) => {
-        if (canReact && e.nativeEvent.pointerType !== 'mouse' && isCoarse()) e.preventDefault();
+        if (!canReact && !canReply) return;
+        e.preventDefault();
+        clearPress();
+        openSheet();
       }}
     >
       <div
         className={`bubble ${isSticker ? 'is-sticker' : ''} ${message.status === 'failed' ? 'is-failed' : ''}`}
         onDoubleClick={(e) => {
-          if (!canReply || e.target.closest('.quote')) return;
+          if (e.target.closest('.quote')) return;
           window.getSelection?.()?.removeAllRanges();
-          onReply(message);
+          // Утсан дээр: Instagram шиг давхар товшиход ❤️. Компьютер дээр: хариулах.
+          if (isCoarse()) {
+            if (canReact) onReact(message.id, '❤️');
+          } else if (canReply) {
+            onReply(message);
+          }
         }}
-        title={canReply ? 'Давхар дарж хариулах' : undefined}
+        title={canReply && !isCoarse() ? 'Давхар дарж хариулах' : undefined}
       >
         {message.replyTo && (
           <button
@@ -311,12 +346,17 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
           </button>
         )}
       </div>
-      {picker && (
+      {(picker || sheet) && (
         <ReactionPicker
           current={reactions.mine}
           side={message.mine ? 'right' : 'left'}
-          onPick={(emoji) => onReact(message.id, emoji)}
-          onClose={() => setPicker(false)}
+          onPick={(emoji) => canReact && onReact(message.id, emoji)}
+          onClose={() => {
+            setPicker(false);
+            setSheet(false);
+          }}
+          onReply={sheet && canReply ? () => onReply(message) : null}
+          onCopy={sheet ? copyText : null}
         />
       )}
       {message.status === 'failed' && (
@@ -556,51 +596,67 @@ function Composer({ draft, setDraft, onSend, onSendSticker, onTyping, replyTo, r
         />
       )}
       <form
-        className="composer"
+        className={`composer ${draft.trim() ? 'has-text' : ''}`}
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        <button
-          type="button"
-          className={`sticker-toggle ${stickersOpen ? 'is-active' : ''}`}
-          aria-label="Стикер"
-          aria-expanded={stickersOpen}
-          title="Стикер"
-          disabled={cooling}
-          onClick={() => setStickersOpen((o) => !o)}
-        >
-          <Icon name="sticker" size={22} />
-        </button>
-        <textarea
-          ref={inputRef}
-          className="composer-input"
-          rows={1}
-          value={draft}
-          onChange={onChange}
-          onKeyDown={onKeyDown}
-          onCompositionStart={() => {
-            composing.current = true;
-          }}
-          onCompositionEnd={() => {
-            composing.current = false;
-          }}
-          onBlur={stopTyping}
-          placeholder={partnerOnline ? 'Мессеж бичих…' : 'Нөгөө хүн түр салсан байна…'}
-          aria-label="Мессеж бичих"
-          maxLength={MAX_MESSAGE_LENGTH + 200}
-          disabled={disabled}
-          enterKeyHint="send"
-        />
-        {length > MAX_MESSAGE_LENGTH - 200 && (
-          <span className={`char-count ${tooLong ? 'is-over' : ''}`}>
-            {length}/{MAX_MESSAGE_LENGTH}
-          </span>
-        )}
-        <button type="submit" className="send-btn" disabled={!canSend} aria-label="Илгээх">
-          <Icon name="send" size={20} />
-        </button>
+        <div className="composer-pill">
+          <button
+            type="button"
+            className={`sticker-toggle ${stickersOpen ? 'is-active' : ''}`}
+            aria-label="Стикер"
+            aria-expanded={stickersOpen}
+            title="Стикер"
+            disabled={cooling}
+            onClick={() => setStickersOpen((o) => !o)}
+          >
+            <Icon name="sticker" size={22} />
+          </button>
+          <textarea
+            ref={inputRef}
+            className="composer-input"
+            rows={1}
+            value={draft}
+            onChange={onChange}
+            onKeyDown={onKeyDown}
+            onCompositionStart={() => {
+              composing.current = true;
+            }}
+            onCompositionEnd={() => {
+              composing.current = false;
+            }}
+            onBlur={stopTyping}
+            onFocus={() => setStickersOpen(false)}
+            placeholder={partnerOnline ? 'Мессеж бичих…' : 'Нөгөө хүн түр салсан байна…'}
+            aria-label="Мессеж бичих"
+            maxLength={MAX_MESSAGE_LENGTH + 200}
+            disabled={disabled}
+            enterKeyHint="send"
+          />
+          {length > MAX_MESSAGE_LENGTH - 200 && (
+            <span className={`char-count ${tooLong ? 'is-over' : ''}`}>
+              {length}/{MAX_MESSAGE_LENGTH}
+            </span>
+          )}
+          {draft.trim() ? (
+            <button type="submit" className="send-text-btn" disabled={!canSend} aria-label="Илгээх">
+              Илгээх
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="quick-heart"
+              aria-label="❤️ илгээх"
+              title="❤️ илгээх"
+              disabled={cooling || disabled}
+              onClick={() => onSend('❤️')}
+            >
+              ❤️
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );
