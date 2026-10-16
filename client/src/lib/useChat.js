@@ -144,7 +144,11 @@ function reducer(state, a) {
         room: { ...state.room, partner: { ...state.room.partner, online: a.online } },
         messages: [
           ...state.messages,
-          sys(a.online ? 'Нөгөө хүн буцаж холбогдлоо.' : 'Нөгөө хүний холболт тасарлаа. Түр хүлээж байна…'),
+          sys(
+            a.online
+              ? 'Үл таних хүн буцаж ирлээ.'
+              : 'Үл таних хүн гарсан эсвэл холболт нь тасарсан бололтой. Хүлээж болно, эсвэл “Дараагийн” дарна уу.',
+          ),
         ],
       };
     case 'rated':

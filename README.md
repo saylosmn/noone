@@ -121,7 +121,8 @@ Matchmaking дараалал, идэвхтэй өрөө, блок жагсаал
 | `ALLOW_VERCEL_PREVIEWS` | `false` | `true` бол `*.vercel.app` зөвшөөрнө |
 | `TRUST_PROXY` | `false` | Render дээр `true` |
 | `INTEREST_WAIT_MS` | `6000` | Ижил сонирхолтой хүн хүлээх хугацаа |
-| `RECONNECT_GRACE_MS` | `20000` | Тасарсны дараа чатыг хадгалах хугацаа |
+| `RECONNECT_GRACE_MS` | `900000` | Тасарсны дараа чатыг хадгалах хугацаа (15 мин) |
+| `PARTNER_AWAY_NOTICE_MS` | `120000` | Нөгөө хүн хэр удаан алга болоход "гарсан бололтой" гэж мэдэгдэх (2 мин) |
 | `REMATCH_COOLDOWN_MS` | `15000` | Саяхан ярьсан хүнтэй дахин холбохгүй хугацаа |
 | `MAX_MESSAGE_LENGTH` | `1000` | |
 | `LIMIT_MESSAGE_BURST` / `LIMIT_MESSAGE_PER_SECOND` | `10` / `3` | 10 мессеж дараалан, дараа нь секундэд 3 |

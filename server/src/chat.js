@@ -127,6 +127,8 @@ export function attachChat(io, { config, push, reports }) {
       sent: new Map(), // одоогийн чатад илгээсэн мессежийн ID -> цаг (агуулгагүй, буцаахад)
       pendingUnsent: [], // холболт тасарсан үед буцаагдсан мессежийн ID-ууд
       disconnectTimer: null,
+      awayTimer: null, // 2 минут болоход нөгөө хүнд мэдэгдэх
+      awayNotified: false,
     };
     clients.set(client.id, client);
     return client;
@@ -139,6 +141,7 @@ export function attachChat(io, { config, push, reports }) {
       if (room) endRoom(room, client, 'disconnected');
     }
     clearTimeout(client.disconnectTimer);
+    clearTimeout(client.awayTimer);
     clients.delete(client.id);
     for (const l of Object.values(limits)) l.delete(client.id);
   }
@@ -155,7 +158,8 @@ export function attachChat(io, { config, push, reports }) {
         startedAt: room.startedAt,
         sharedInterests: room.sharedInterests,
         sharedSchool: room.sharedSchool,
-        partner: { nickname: PARTNER_NAME, online: Boolean(partner?.socketId) },
+        // Түр гарсан ч 2 минут болоогүй бол онлайн гэж харуулна
+        partner: { nickname: PARTNER_NAME, online: Boolean(partner && (partner.socketId || !partner.awayNotified)) },
         friend: {
           mine: room.friend[client.id] || null,
           partnerOffered: Boolean(partnerOffer),
@@ -368,6 +372,10 @@ export function attachChat(io, { config, push, reports }) {
 
     clearTimeout(client.disconnectTimer);
     client.disconnectTimer = null;
+    clearTimeout(client.awayTimer);
+    client.awayTimer = null;
+    const wasAwayNotified = client.awayNotified;
+    client.awayNotified = false;
     client.socketId = socket.id;
     client.visible = true;
     client.ipHash = socket.data.ipHash;
@@ -385,7 +393,8 @@ export function attachChat(io, { config, push, reports }) {
     if (resumed && client.roomId) {
       const room = rooms.get(client.roomId);
       const partner = room && clients.get(room.a === client.id ? room.b : room.a);
-      if (partner) emitTo(partner, 'chat:partner_status', { online: true });
+      // "Гарсан" гэж мэдэгдсэн байсан бол л буцаж ирснийг мэдэгдэнэ
+      if (partner && wasAwayNotified) emitTo(partner, 'chat:partner_status', { online: true });
     }
     // Холболт тасарсан хооронд буцаагдсан мессежүүдийг мэдэгдэнэ
     if (resumed && client.roomId && client.pendingUnsent.length) {
@@ -477,8 +486,9 @@ export function attachChat(io, { config, push, reports }) {
       }
 
       const partner = partnerOf(c, room);
-      const canBuffer = Boolean(partner && !partner.socketId && partner.pushSub && push.enabled);
-      if (!partner?.socketId && !canBuffer) return { ok: false, error: 'partner_offline' };
+      // Нөгөө хүн түр гарсан бол мессежийг санах ойд түр барьж, буцаж ороход нь хүргэнэ
+      const canBuffer = Boolean(partner && !partner.socketId);
+      if (!partner) return { ok: false, error: 'partner_offline' };
 
       c.lastTexts.push({ norm, ts: now });
       for (const [id, t] of c.sent) if (now - t > UNSEND_WINDOW_MS) c.sent.delete(id);
@@ -493,7 +503,7 @@ export function attachChat(io, { config, push, reports }) {
         // Апп хаалттай — буцаж ороход хүргэнэ, push мэдэгдэл илгээнэ
         if (partner.pending.length >= config.pendingMax) return { ok: false, error: 'partner_offline' };
         partner.pending.push(message);
-        notifyPush(partner, { title: 'noone', body: 'Шинэ мессеж ирлээ', tag: 'noone-message' }, true);
+        if (partner.pushSub) notifyPush(partner, { title: 'noone', body: 'Шинэ мессеж ирлээ', tag: 'noone-message' }, true);
       } else {
         emitTo(partner, 'chat:message', message);
         if (!partner.visible) notifyPush(partner, { title: 'noone', body: 'Шинэ мессеж ирлээ', tag: 'noone-message' });
@@ -681,10 +691,19 @@ export function attachChat(io, { config, push, reports }) {
       c.socketId = null;
       c.visible = false;
       removeFromQueue(c);
-      const room = roomOf(c);
-      if (room) emitTo(partnerOf(c, room), 'chat:partner_status', { online: false });
+      // Түр гарах (апп солих, сүлжээ тасрах) бүрт нөгөө хүнд шууд мэдэгдэхгүй —
+      // partnerAwayNoticeMs (2 мин) болоход л "гарсан эсвэл холболт нь тасарсан" гэж мэдэгдэнэ.
+      if (roomOf(c)) {
+        c.awayTimer = setTimeout(() => {
+          c.awayTimer = null;
+          const room = roomOf(c);
+          if (c.socketId || !room) return;
+          c.awayNotified = true;
+          emitTo(partnerOf(c, room), 'chat:partner_status', { online: false });
+        }, config.partnerAwayNoticeMs);
+      }
       // Тодорхой хугацаанд эргэж холбогдохгүй бол сесс болон чатыг устгана
-      const grace = c.roomId && c.pushSub && push.enabled ? config.pushGraceMs : config.reconnectGraceMs;
+      const grace = c.roomId ? Math.max(config.reconnectGraceMs, c.pushSub && push.enabled ? config.pushGraceMs : 0) : config.reconnectGraceMs;
       c.disconnectTimer = setTimeout(() => deleteClient(c), grace);
     });
   });
@@ -702,7 +721,10 @@ export function attachChat(io, { config, push, reports }) {
       clearInterval(sweeper);
       clearInterval(statsTimer);
       clearInterval(cleanupTimer);
-      for (const c of clients.values()) clearTimeout(c.disconnectTimer);
+      for (const c of clients.values()) {
+        clearTimeout(c.disconnectTimer);
+        clearTimeout(c.awayTimer);
+      }
     },
   };
 }

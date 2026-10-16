@@ -18,6 +18,7 @@ before(async () => {
     serveClient: false,
     clientOrigins: ['*'],
     pushGraceMs: 1500,
+    partnerAwayNoticeMs: 300,
     limits: { connectPerMinute: 1000 },
   });
   const addr = await server.listen(0, '127.0.0.1');
@@ -32,7 +33,10 @@ after(async () => {
 beforeEach(() => {
   for (const s of sockets.splice(0)) s.disconnect();
   const { clients, rooms, queues } = server.chat._internal;
-  for (const c of clients.values()) clearTimeout(c.disconnectTimer);
+  for (const c of clients.values()) {
+    clearTimeout(c.disconnectTimer);
+    clearTimeout(c.awayTimer);
+  }
   clients.clear();
   rooms.clear();
   queues.male.clear();
@@ -321,8 +325,9 @@ test('холболт тасарвал нөгөөд нь мэдэгдэж, дах
   a.disconnect();
   assert.deepEqual(await offline, { online: false });
 
-  const failed = await emit(b, 'chat:message', { text: 'чи байна уу?' });
-  assert.equal(failed.error, 'partner_offline');
+  // Түр гарсан хүнд илгээсэн мессеж буцаж ороход нь хүргэгдэнэ
+  const buffered = await emit(b, 'chat:message', { text: 'чи байна уу?' });
+  assert.equal(buffered.ok, true);
 
   const online = waitFor(b, 'chat:partner_status');
   const a2 = await connect(auth);
@@ -330,9 +335,21 @@ test('холболт тасарвал нөгөөд нь мэдэгдэж, дах
   assert.equal(a2.session.state.status, 'chatting');
   assert.deepEqual(await online, { online: true });
 
+  assert.equal((await waitFor(a2, 'chat:message')).text, 'чи байна уу?');
   const incoming = waitFor(a2, 'chat:message');
   await emit(b, 'chat:message', { text: 'буцаад ирлээ' });
   assert.equal((await incoming).text, 'буцаад ирлээ');
+});
+
+test('2 минут болохоос өмнө буцаж ирвэл нөгөө хүнд "гарсан" гэж огт мэдэгдэхгүй', async () => {
+  const { a, b } = await matchedPair();
+  const auth = { clientId: a.session.clientId, resumeToken: a.session.resumeToken };
+  const none = expectNone(b, 'chat:partner_status', 500);
+  a.disconnect();
+  await new Promise((r) => setTimeout(r, 100));
+  const a2 = await connect(auth);
+  assert.equal(a2.session.state.status, 'chatting');
+  await none;
 });
 
 test('буруу resumeToken-оор бусдын сессийг авч чадахгүй', async () => {
@@ -511,10 +528,11 @@ test('push: апп хаалттай үед мессеж түр хадгалаг�
   }
 });
 
-test('push-гүй хэрэглэгч гарсан бол мессеж түр хадгалагдахгүй', async () => {
+test('push-гүй хэрэглэгч түр гарсан ч мессеж хадгалагдаж, push илгээхгүй', async () => {
   const { a, b } = await matchedPair();
   const offline = waitFor(a, 'chat:partner_status');
   b.disconnect();
   await offline;
-  assert.equal((await emit(a, 'chat:message', { text: 'сайн уу' })).error, 'partner_offline');
+  assert.equal((await emit(a, 'chat:message', { text: 'сайн уу' })).ok, true);
+  assert.equal(server.chat._internal.clients.get(b.session.clientId).pending.length, 1);
 });

@@ -23,7 +23,9 @@ export function loadConfig(overrides = {}) {
     // Ижил сонирхолтой хүн хүлээх хугацаа. Дараа нь хэнтэй ч хамаагүй холбоно.
     interestWaitMs: int(env.INTEREST_WAIT_MS, 6000),
     // Холболт тасарсны дараа чатыг хэр удаан хадгалах (дахин холбогдох боломж)
-    reconnectGraceMs: int(env.RECONNECT_GRACE_MS, 20000),
+    reconnectGraceMs: int(env.RECONNECT_GRACE_MS, 15 * 60 * 1000),
+    // Нөгөө хүн хэр удаан алга болсны дараа "гарсан эсвэл холболт нь тасарсан" гэж мэдэгдэх
+    partnerAwayNoticeMs: int(env.PARTNER_AWAY_NOTICE_MS, 2 * 60 * 1000),
     // Push мэдэгдэлтэй хэрэглэгч апп-аа хаасан/нуусан үед чатыг хэр удаан хүлээх
     pushGraceMs: int(env.PUSH_GRACE_MS, 5 * 60 * 1000),
     // Нөгөө хүн түр гарсан үед хүргэгдээгүй мессежийг санах ойд хэдийг хүртэл барих

@@ -934,7 +934,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
     statusText = 'Таны холболт тасарсан';
     statusClass = 'is-away';
   } else if (!partnerOnline) {
-    statusText = 'Салсан, хүлээж байна…';
+    statusText = 'Гарсан бололтой';
     statusClass = 'is-away';
   } else if (partnerTyping) {
     statusText = 'Бичиж байна…';
