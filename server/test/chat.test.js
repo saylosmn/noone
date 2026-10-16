@@ -187,6 +187,47 @@ test('мессежийн агуулга серверт хадгалагдахг�
   assert.ok(!dump.includes('нууц-тест-12345'));
 });
 
+test('"Харсан" тэмдэг нөгөө хүнд дамжина', async () => {
+  const { a, b } = await matchedPair();
+  const sent = await emit(a, 'chat:message', { text: 'уншсан уу?' });
+  const seen = waitFor(a, 'chat:seen');
+  assert.equal((await emit(b, 'chat:seen', { messageId: sent.id })).ok, true);
+  assert.deepEqual(await seen, { messageId: sent.id });
+  assert.equal((await emit(b, 'chat:seen', { messageId: 'буруу' })).error, 'invalid');
+});
+
+test('мессеж буцаах: зөвхөн өөрийнхөө, 1 минутын дотор', async () => {
+  const { a, b } = await matchedPair();
+  const sent = await emit(a, 'chat:message', { text: 'буцаах гэж байна' });
+  const unsent = waitFor(b, 'chat:unsent');
+  assert.equal((await emit(a, 'chat:unsend', { messageId: sent.id })).ok, true);
+  assert.deepEqual(await unsent, { messageId: sent.id });
+  // Дахин буцаах, бусдын мессежийг буцаах боломжгүй
+  assert.equal((await emit(a, 'chat:unsend', { messageId: sent.id })).error, 'unsend_expired');
+  const other = await emit(b, 'chat:message', { text: 'миний мессеж' });
+  assert.equal((await emit(a, 'chat:unsend', { messageId: other.id })).error, 'unsend_expired');
+  // 1 минут өнгөрсөн бол
+  const old = await emit(a, 'chat:message', { text: 'хуучин мессеж' });
+  const client = server.chat._internal.clients.get(a.session.clientId);
+  client.sent.set(old.id, Date.now() - 61 * 1000);
+  assert.equal((await emit(a, 'chat:unsend', { messageId: old.id })).error, 'unsend_expired');
+});
+
+test('холболт тасарсан үед буцаасан мессеж дахин холбогдоход мэдэгдэнэ', async () => {
+  const { a, b } = await matchedPair();
+  const sent = await emit(a, 'chat:message', { text: 'алдаатай мессеж' });
+  const auth = { clientId: b.session.clientId, resumeToken: b.session.resumeToken };
+  const offline = waitFor(a, 'chat:partner_status');
+  b.disconnect();
+  await offline;
+  assert.equal((await emit(a, 'chat:unsend', { messageId: sent.id })).ok, true);
+  const b2 = ioClient(url, { transports: ['websocket'], auth, reconnection: false, forceNew: true });
+  sockets.push(b2);
+  const unsent = waitFor(b2, 'chat:unsent');
+  assert.equal((await waitFor(b2, 'session')).resumed, true);
+  assert.deepEqual(await unsent, { messageId: sent.id });
+});
+
 test('урт, хоосон мессеж, хяналтын тэмдэгт', () => {
   assert.equal(sanitizeText('   ', 10).error, 'empty');
   assert.equal(sanitizeText('a'.repeat(11), 10).error, 'too_long');

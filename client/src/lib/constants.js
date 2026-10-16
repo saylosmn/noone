@@ -102,7 +102,11 @@ export const ERROR_TEXT = {
   invalid_handle: 'Хаяг буруу байна (2–50 тэмдэгт).',
   invalid_platform: 'Сошиал сүлжээгээ сонгоно уу.',
   already_revealed: 'Та хоёр аль хэдийн хаягаа солилцсон.',
+  unsend_expired: 'Мессежийг зөвхөн илгээснээс хойш 1 минутын дотор буцааж болно.',
 };
+
+// Мессеж буцаах хугацаа (сервертэй ижил)
+export const UNSEND_WINDOW_MS = 60 * 1000;
 
 export const errorText = (code) => ERROR_TEXT[code] || 'Алдаа гарлаа. Дахин оролдоно уу.';
 

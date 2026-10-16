@@ -102,6 +102,25 @@ function reducer(state, a) {
       return { ...state, messages: [...state.messages, a.message] };
     case 'update_message':
       return { ...state, messages: state.messages.map((m) => (m.id === a.id ? { ...m, ...a.patch } : m)) };
+    case 'unsent':
+      return {
+        ...state,
+        messages: state.messages.map((m) =>
+          m.id === a.id ? { ...m, unsent: true, text: '', sticker: null, replyTo: null, reactions: {} } : m,
+        ),
+      };
+    case 'seen': {
+      // Тэр мессеж болон түүнээс өмнөх миний бүх мессежийг "Харсан" болгоно
+      const idx = state.messages.findIndex((m) => m.id === a.id);
+      if (idx < 0) return state;
+      let changed = false;
+      const messages = state.messages.map((m, i) => {
+        if (i > idx || !m.mine || m.status !== 'sent') return m;
+        changed = true;
+        return { ...m, status: 'seen' };
+      });
+      return changed ? { ...state, messages } : state;
+    }
     case 'reaction':
       return {
         ...state,
@@ -151,6 +170,25 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
   cbRef.current = { onIncoming, onMatch, onToast, onSession };
   const socketRef = useRef(null);
   const typingTimer = useRef(null);
+  const lastSeenSent = useRef(null);
+
+  /** Нөгөө хүний хамгийн сүүлийн мессежийг "харсан" гэж мэдэгдэнэ (хуудас харагдаж байх үед л). */
+  const reportSeen = useCallback((messageId) => {
+    const socket = socketRef.current;
+    if (!messageId || messageId === lastSeenSent.current || !socket?.connected) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (stateRef.current.phase !== 'chatting') return;
+    lastSeenSent.current = messageId;
+    socket.emit('chat:seen', { messageId });
+  }, []);
+  const lastReceivedId = () => {
+    const list = stateRef.current.messages;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const m = list[i];
+      if (!m.mine && !m.system && !m.unsent && /^m_/.test(m.id)) return m.id;
+    }
+    return null;
+  };
 
   const request = useCallback(
     (event, payload, timeout = 8000) =>
@@ -228,6 +266,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     socket.on('queue:status', (s) => dispatch({ type: 'search_status', phase: s.phase, since: s.since }));
 
     socket.on('match:found', (m) => {
+      lastSeenSent.current = null;
       dispatch({
         type: 'matched',
         room: toRoom(m),
@@ -252,7 +291,11 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
         },
       });
       cbRef.current.onIncoming?.(m);
+      reportSeen(m.id);
     });
+
+    socket.on('chat:seen', ({ messageId }) => dispatch({ type: 'seen', id: messageId }));
+    socket.on('chat:unsent', ({ messageId }) => dispatch({ type: 'unsent', id: messageId }));
 
     socket.on('chat:typing', ({ typing }) => {
       clearTimeout(typingTimer.current);
@@ -294,6 +337,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
 
     const onVisibility = () => {
       if (socket.connected) socket.emit('presence:visibility', { visible: document.visibilityState === 'visible' });
+      if (document.visibilityState === 'visible') reportSeen(lastReceivedId());
     };
     document.addEventListener('visibilitychange', onVisibility);
 
@@ -303,7 +347,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [joinQueue, profileRef]);
+  }, [joinQueue, profileRef, reportSeen]);
 
   // ---------- Үйлдлүүд ----------
   const startSearch = useCallback(
@@ -366,7 +410,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       });
       const res = await request('chat:message', sticker ? { sticker, replyTo } : { text: clean, replyTo });
       if (res.ok) {
-        const patch = { id: res.id, ts: res.ts, status: 'sent' };
+        const patch = { id: res.id, ts: res.ts, sentAt: Date.now(), status: 'sent' };
         if (res.text) patch.text = res.text; // хараалын үг шүүгдсэн хэлбэр
         dispatch({ type: 'update_message', id: tempId, patch });
         return true;
@@ -390,7 +434,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
         msg.sticker ? { sticker: msg.sticker, replyTo: msg.replyTo } : { text: msg.text, replyTo: msg.replyTo },
       );
       if (res.ok) {
-        dispatch({ type: 'update_message', id, patch: { id: res.id, ts: res.ts, status: 'sent', ...(res.text ? { text: res.text } : {}) } });
+        dispatch({ type: 'update_message', id, patch: { id: res.id, ts: res.ts, sentAt: Date.now(), status: 'sent', ...(res.text ? { text: res.text } : {}) } });
       } else {
         dispatch({ type: 'update_message', id, patch: { status: 'failed', error: res.error } });
         if (res.error === 'rate_limited') startCooldown(res.retryAfterMs);
@@ -411,6 +455,21 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
         dispatch({ type: 'reaction', messageId, who: 'mine', emoji: msg.reactions?.mine || null });
         if (res.error !== 'rate_limited') toast(errorText(res.error));
       }
+    },
+    [request],
+  );
+
+  const unsend = useCallback(
+    async (messageId) => {
+      const msg = stateRef.current.messages.find((m) => m.id === messageId);
+      if (!msg?.mine || msg.unsent || stateRef.current.phase !== 'chatting') return false;
+      const res = await request('chat:unsend', { messageId });
+      if (!res.ok) {
+        toast(errorText(res.error));
+        return false;
+      }
+      dispatch({ type: 'unsent', id: messageId });
+      return true;
     },
     [request],
   );
@@ -525,6 +584,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       sendMessage,
       takeSendToken,
       react,
+      unsend,
       offerFriend,
       cancelFriend,
       retryMessage,

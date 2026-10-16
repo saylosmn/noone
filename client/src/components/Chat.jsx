@@ -6,6 +6,7 @@ import {
   PARTNER_NAME,
   REACTIONS,
   REPORT_REASONS,
+  UNSEND_WINDOW_MS,
   errorText,
   interestLabel,
   platformLabel,
@@ -93,7 +94,7 @@ function Menu({ items }) {
 }
 
 // ---------------- Мессеж ----------------
-const previewText = (m) => (m.sticker ? `Стикер · ${stickerLabel(m.sticker)}` : snippet(m.text, 80));
+const previewText = (m) => (m.unsent ? 'Буцаасан мессеж' : m.sticker ? `Стикер · ${stickerLabel(m.sticker)}` : snippet(m.text, 80));
 
 function ContactCard({ contact }) {
   const [copied, setCopied] = useState(false);
@@ -132,7 +133,7 @@ function ContactCard({ contact }) {
   );
 }
 
-function ReactionPicker({ current, onPick, onClose, side, onReply, onCopy }) {
+function ReactionPicker({ current, onPick, onClose, side, onReply, onCopy, onUnsend }) {
   const ref = useRef(null);
   useEffect(() => {
     const onDown = (e) => {
@@ -168,7 +169,7 @@ function ReactionPicker({ current, onPick, onClose, side, onReply, onCopy }) {
           </button>
         ))}
       </div>
-      {(onReply || onCopy) && (
+      {(onReply || onCopy || onUnsend) && (
         <div className="sheet-actions">
           {onReply && (
             <button
@@ -196,20 +197,36 @@ function ReactionPicker({ current, onPick, onClose, side, onReply, onCopy }) {
               <Icon name="copy" size={18} /> Хуулах
             </button>
           )}
+          {onUnsend && (
+            <button
+              type="button"
+              role="menuitem"
+              className="sheet-action is-danger"
+              onClick={() => {
+                onUnsend();
+                onClose();
+              }}
+            >
+              <Icon name="undo" size={18} /> Буцаах
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRetry, grouped, highlighted }) {
+function Bubble({ message, original, partnerName, onReply, onReact, onUnsend, onJump, onRetry, grouped, highlighted, seenLabel }) {
   const rowRef = useRef(null);
   const touch = useRef(null);
   const pressTimer = useRef(null);
   const [picker, setPicker] = useState(false);
-  const live = !message.system && message.status !== 'sending' && message.status !== 'failed';
+  const live = !message.system && !message.unsent && message.status !== 'sending' && message.status !== 'failed';
   const canReply = Boolean(onReply) && live;
   const canReact = Boolean(onReact) && live && !message.id.startsWith('tmp_');
+  // Буцаах боломжтой эсэхийг дарах үед дахин шалгана (хугацаа өнгөрч болно)
+  const withinUnsend = () => Date.now() - (message.sentAt || 0) < UNSEND_WINDOW_MS;
+  const canUnsend = Boolean(onUnsend) && live && message.mine && Boolean(message.sentAt) && withinUnsend();
 
   const clearPress = () => clearTimeout(pressTimer.current);
   const [sheet, setSheet] = useState(false); // утсан дээрх удаан дарах цэс
@@ -252,6 +269,15 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
     return (
       <div className="system-note" role="note">
         {message.text}
+      </div>
+    );
+  }
+  if (message.unsent) {
+    return (
+      <div id={`msg-${message.id}`} className={`msg-row ${message.mine ? 'mine' : 'theirs'} ${grouped ? 'grouped' : ''}`}>
+        <div className="bubble is-unsent">
+          <p className="msg-text">{message.mine ? 'Та мессежээ буцаасан' : 'Нууц нэгэн мессежээ буцаасан'}</p>
+        </div>
       </div>
     );
   }
@@ -307,6 +333,7 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
           {formatTime(message.ts)}
           {message.mine && message.status === 'sending' && <Icon name="clock" size={12} />}
           {message.mine && message.status === 'sent' && <Icon name="check" size={12} strokeWidth={3} />}
+          {message.mine && message.status === 'seen' && <Icon name="checks" size={14} strokeWidth={2.6} />}
           {message.status === 'failed' && <Icon name="alert" size={12} />}
         </span>
         {shown.length > 0 && (
@@ -328,6 +355,17 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
         )}
       </div>
       <div className="msg-actions">
+        {canUnsend && (
+          <button
+            type="button"
+            className="reply-btn unsend-btn"
+            aria-label="Мессежээ буцаах"
+            title="Буцаах (1 минутын дотор)"
+            onClick={() => onUnsend(message.id)}
+          >
+            <Icon name="undo" size={16} />
+          </button>
+        )}
         {canReact && (
           <button
             type="button"
@@ -357,8 +395,10 @@ function Bubble({ message, original, partnerName, onReply, onReact, onJump, onRe
           }}
           onReply={sheet && canReply ? () => onReply(message) : null}
           onCopy={sheet ? copyText : null}
+          onUnsend={sheet && canUnsend ? () => withinUnsend() && onUnsend(message.id) : null}
         />
       )}
+      {seenLabel && <span className="seen-label">Харсан</span>}
       {message.status === 'failed' && (
         <button type="button" className="retry-btn" onClick={() => onRetry(message.id)}>
           <span title={errorText(message.error)}>Илгээгдсэнгүй</span> · Дахин оролдох
@@ -380,13 +420,23 @@ function TypingBubble() {
   );
 }
 
-function MessageList({ messages, partnerTyping, partnerName, onReply, onReact, onRetry, jumpRef, footer }) {
+function MessageList({ messages, partnerTyping, partnerName, onReply, onReact, onUnsend, onRetry, jumpRef, footer }) {
   const listRef = useRef(null);
   const atBottomRef = useRef(true);
   const [newCount, setNewCount] = useState(0);
   const [flashId, setFlashId] = useState(null);
   const prevLen = useRef(messages.length);
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  // "Харсан" гэсэн бичгийг миний хамгийн сүүлийн мессежийн доор л харуулна
+  const seenId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m.system || m.contact) continue;
+      if (!m.mine) return null;
+      if (!m.unsent) return m.status === 'seen' ? m.id : null;
+    }
+    return null;
+  }, [messages]);
 
   const scrollToBottom = useCallback((smooth = true) => {
     const el = listRef.current;
@@ -452,10 +502,12 @@ function MessageList({ messages, partnerTyping, partnerName, onReply, onReact, o
                 partnerName={partnerName}
                 onReply={onReply}
                 onReact={onReact}
+                onUnsend={onUnsend}
                 onJump={jumpTo}
                 onRetry={onRetry}
                 grouped={grouped}
                 highlighted={flashId === m.id}
+                seenLabel={seenId === m.id}
               />
             );
           })}
@@ -992,6 +1044,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         partnerName={partnerName}
         onReply={chatting ? startReply : null}
         onReact={chatting ? actions.react : null}
+        onUnsend={chatting ? actions.unsend : null}
         onRetry={actions.retryMessage}
         jumpRef={jumpRef}
         footer={endPanel}

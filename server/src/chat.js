@@ -17,6 +17,8 @@ import { isValidSubscription } from './push.js';
 const MESSAGE_ID_RE = /^m_[a-f0-9]{16}$/;
 const ID_RE = /^c_[a-f0-9]{24}$/;
 const HANDLE_RE = /^[\p{L}\p{N}._@+\-#: ]{2,50}$/u;
+// Илгээснээс хойш хэдэн мс-ийн дотор мессежээ буцааж болох
+export const UNSEND_WINDOW_MS = 60 * 1000;
 const opposite = (gender) => (gender === 'male' ? 'female' : 'male');
 const hex = (bytes) => randomBytes(bytes).toString('hex');
 
@@ -51,6 +53,7 @@ export function attachChat(io, { config, push, reports }) {
     connect: new KeyedLimiter({ capacity: config.limits.connectPerMinute, refillPerSec: config.limits.connectPerMinute / 60 }),
     message: new KeyedLimiter({ capacity: config.limits.messageBurst, refillPerSec: config.limits.messagePerSecond }),
     typing: new KeyedLimiter({ capacity: 10, refillPerSec: 2 }),
+    seen: new KeyedLimiter({ capacity: 10, refillPerSec: 2 }),
     queue: new KeyedLimiter({ capacity: 8, refillPerSec: 1 / 3 }),
     report: new KeyedLimiter({ capacity: 5, refillPerSec: 5 / 3600 }),
     misc: new KeyedLimiter({ capacity: 20, refillPerSec: 1 }),
@@ -121,6 +124,8 @@ export function attachChat(io, { config, push, reports }) {
       pending: [], // апп хаалттай үед ирсэн, хүргэгдээгүй мессежүүд (зөвхөн санах ойд, түр)
       lastPushAt: 0,
       lastTexts: [],
+      sent: new Map(), // одоогийн чатад илгээсэн мессежийн ID -> цаг (агуулгагүй, буцаахад)
+      pendingUnsent: [], // холболт тасарсан үед буцаагдсан мессежийн ID-ууд
       disconnectTimer: null,
     };
     clients.set(client.id, client);
@@ -251,6 +256,8 @@ export function attachChat(io, { config, push, reports }) {
       me.roomId = null;
       me.lastTexts = [];
       me.pending = [];
+      me.sent.clear();
+      me.pendingUnsent = [];
       me.recent.set(otherId, now);
       me.last = {
         roomId: room.id,
@@ -380,6 +387,10 @@ export function attachChat(io, { config, push, reports }) {
       const partner = room && clients.get(room.a === client.id ? room.b : room.a);
       if (partner) emitTo(partner, 'chat:partner_status', { online: true });
     }
+    // Холболт тасарсан хооронд буцаагдсан мессежүүдийг мэдэгдэнэ
+    if (resumed && client.roomId && client.pendingUnsent.length) {
+      for (const messageId of client.pendingUnsent.splice(0)) socket.emit('chat:unsent', { messageId });
+    }
     // Апп хаалттай байх үед ирсэн мессежүүдийг хүргээд санах ойгоос устгана
     if (resumed && client.roomId && client.pending.length) {
       const queued = client.pending.splice(0);
@@ -470,12 +481,14 @@ export function attachChat(io, { config, push, reports }) {
       if (!partner?.socketId && !canBuffer) return { ok: false, error: 'partner_offline' };
 
       c.lastTexts.push({ norm, ts: now });
+      for (const [id, t] of c.sent) if (now - t > UNSEND_WINDOW_MS) c.sent.delete(id);
       const message = {
         id: `m_${hex(8)}`,
         ts: now,
         replyTo: MESSAGE_ID_RE.test(payload.replyTo || '') ? payload.replyTo : null,
         ...(sticker ? { sticker } : { text }),
       };
+      c.sent.set(message.id, now);
       if (canBuffer) {
         // Апп хаалттай — буцаж ороход хүргэнэ, push мэдэгдэл илгээнэ
         if (partner.pending.length >= config.pendingMax) return { ok: false, error: 'partner_offline' };
@@ -497,6 +510,41 @@ export function attachChat(io, { config, push, reports }) {
       if (emoji !== null && !REACTIONS.includes(emoji)) return { ok: false, error: 'invalid' };
       if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
       emitTo(partnerOf(c, room), 'chat:reaction', { messageId: payload.messageId, emoji });
+      return { ok: true };
+    });
+
+    // "Харсан": нөгөө хүний хамгийн сүүлд харсан мессежийн ID-г дамжуулна
+    on('chat:seen', (c, payload) => {
+      const room = roomOf(c);
+      if (!room) return { ok: false, error: 'not_in_chat' };
+      if (!MESSAGE_ID_RE.test(payload.messageId || '')) return { ok: false, error: 'invalid' };
+      if (!limits.seen.take(c.id).ok) return { ok: false, error: 'rate_limited' };
+      emitTo(partnerOf(c, room), 'chat:seen', { messageId: payload.messageId });
+      return { ok: true };
+    });
+
+    // Мессеж буцаах: зөвхөн өөрийнхөө, илгээснээс хойш 1 минутын дотор
+    on('chat:unsend', (c, payload) => {
+      const room = roomOf(c);
+      if (!room) return { ok: false, error: 'not_in_chat' };
+      const messageId = payload.messageId;
+      if (!MESSAGE_ID_RE.test(messageId || '')) return { ok: false, error: 'invalid' };
+      const sentAt = c.sent.get(messageId);
+      if (sentAt === undefined || Date.now() - sentAt > UNSEND_WINDOW_MS) return { ok: false, error: 'unsend_expired' };
+      if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
+      c.sent.delete(messageId);
+      const partner = partnerOf(c, room);
+      if (partner) {
+        const idx = partner.pending.findIndex((m) => m.id === messageId);
+        if (idx >= 0) {
+          // Хүргэгдээгүй байсан — нөгөө хүнд огт очихгүй
+          partner.pending.splice(idx, 1);
+        } else if (partner.socketId) {
+          emitTo(partner, 'chat:unsent', { messageId });
+        } else if (partner.pendingUnsent.length < config.pendingMax) {
+          partner.pendingUnsent.push(messageId);
+        }
+      }
       return { ok: true };
     });
 
