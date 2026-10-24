@@ -42,13 +42,20 @@ export const CONFESSION_RULES = [
   '3 хүн мэдээлбэл автоматаар нуугдана. 30 хоногийн дараа устна.',
 ];
 
-export const CONFESSION_LIMITS = { min: 10, max: 500 };
+export const CONFESSION_LIMITS = { min: 1, max: 1000 };
+// Серверийн CONFESSION_IMAGE_MAX_BYTES-тэй таарна
+const IMAGE_MAX_BYTES = 330 * 1024;
+const IMAGE_MAX_SIDE = 1280;
 
 const ERRORS = {
   contact_info: 'Утас, линк, @хаяг, имэйл зэрэг холбоо барих мэдээлэл бичих боломжгүй.',
   too_short: `Хамгийн багадаа ${CONFESSION_LIMITS.min} тэмдэгт бичнэ үү.`,
+  bad_image: 'Зураг уншигдсангүй. Өөр зураг сонгоно уу.',
+  image_too_large: 'Зураг хэт том байна. Өөр зураг сонгоно уу.',
+  storage: 'Серверт хадгалж чадсангүй. Дахин оролдоно уу.',
+  invalid_subscription: 'Энэ төхөөрөмж мэдэгдэл хүлээн авах боломжгүй байна.',
   too_long: `Хамгийн ихдээ ${CONFESSION_LIMITS.max} тэмдэгт.`,
-  empty: 'Юу ч бичээгүй байна.',
+  empty: 'Юм бичих эсвэл зураг сонгоно уу.',
   duplicate: 'Яг ийм confession саяхан нийтлэгдсэн байна.',
   adult_confirmation_required: '18 нас хүрсэн гэдгээ баталгаажуулна уу.',
   no_device: 'Хөтчийн хадгалалт хаалттай байна. Хувийн цонхноос гарч оролдоно уу.',
@@ -105,7 +112,47 @@ export const confessionsApi = {
   like: (id, like) => request(`/${encodeURIComponent(id)}/like`, { method: 'POST', body: { like } }),
   report: (id, reason) => request(`/${encodeURIComponent(id)}/report`, { method: 'POST', body: { reason } }),
   remove: (id) => request(`/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  subscribe: (subscription) => request('/subscribe', { method: 'POST', body: { subscription } }),
+  unsubscribe: () => request('/subscribe', { method: 'DELETE' }),
 };
+
+export const imageUrl = (id) => apiUrl(`/api/confessions/${encodeURIComponent(id)}/image`);
+
+/**
+ * Сонгосон зургийг JPEG болгон шахна (canvas дахин зурдаг тул EXIF/байршил арилна).
+ * @returns {Promise<{ data: string, w: number, h: number, previewUrl: string }>}
+ */
+export async function compressImage(file) {
+  if (!file || !/^image\//.test(file.type)) throw new ApiError('bad_image');
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new ApiError('bad_image');
+  }
+  const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; // PNG-ийн тунгалаг хэсэг хар болохоос сэргийлнэ
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close?.();
+  const toBlob = (q) => new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', q));
+  let blob = null;
+  for (const q of [0.82, 0.72, 0.62, 0.52, 0.42, 0.32]) {
+    blob = await toBlob(q);
+    if (blob && blob.size <= IMAGE_MAX_BYTES) break;
+  }
+  if (!blob || blob.size > IMAGE_MAX_BYTES) throw new ApiError('image_too_large');
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { data: btoa(binary), w, h, previewUrl: URL.createObjectURL(blob) };
+}
 
 export function timeAgo(ts, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - ts) / 1000));

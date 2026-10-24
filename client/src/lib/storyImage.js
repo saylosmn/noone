@@ -1,5 +1,5 @@
 import { schoolLabel } from './constants.js';
-import { tagInfo } from './confessions.js';
+import { imageUrl, tagInfo } from './confessions.js';
 
 const W = 1080;
 const H = 1920;
@@ -98,24 +98,42 @@ export async function renderStoryImage(item) {
   const padX = 72;
   const textMax = cardW - padX * 2;
 
+  // Зураг (байвал) — татаж чадахгүй бол зөвхөн текстээр үргэлжлүүлнэ
+  let bitmap = null;
+  if (item.image) {
+    try {
+      const res = await fetch(imageUrl(item.id));
+      if (res.ok) bitmap = await createImageBitmap(await res.blob());
+    } catch {
+      bitmap = null;
+    }
+  }
+  const imgMaxH = item.text?.trim() ? 640 : 900;
+  const imgScale = bitmap ? Math.min(textMax / bitmap.width, imgMaxH / bitmap.height) : 0;
+  const imgW = bitmap ? bitmap.width * imgScale : 0;
+  const imgH = bitmap ? bitmap.height * imgScale : 0;
+
   // Текстийн хэмжээг багтаан сонгоно
-  const text = item.text.trim();
+  const text = (item.text || '').trim();
+  const textBudget = bitmap ? 520 : 980;
   let size = 64;
-  let lines;
-  for (; size >= 34; size -= 2) {
-    ctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
-    lines = wrap(ctx, text, textMax);
-    if (lines.length * size * 1.38 <= 980) break;
+  let lines = [];
+  if (text) {
+    for (; size >= 34; size -= 2) {
+      ctx.font = `600 ${size}px Inter, system-ui, sans-serif`;
+      lines = wrap(ctx, text, textMax);
+      if (lines.length * size * 1.38 <= textBudget) break;
+    }
   }
   const lineH = size * 1.38;
-  const maxLines = Math.floor(1000 / lineH);
+  const maxLines = Math.floor((textBudget + 20) / lineH);
   if (lines.length > maxLines) {
     lines = lines.slice(0, maxLines);
     lines[maxLines - 1] = `${lines[maxLines - 1].replace(/\s*\S*$/, '')}…`;
   }
 
   const textH = lines.length * lineH;
-  const cardH = Math.max(560, textH + 300);
+  const cardH = Math.max(560, textH + (bitmap ? imgH + 40 : 0) + 300);
   const cardY = Math.max(330, (H - cardH) / 2 - 40);
 
   ctx.save();
@@ -154,6 +172,16 @@ export async function renderStoryImage(item) {
   for (const line of lines) {
     ctx.fillText(line, cardX + padX, y);
     y += lineH;
+  }
+
+  if (bitmap) {
+    const imgY = text ? y - size * 0.4 + 20 : cardY + 150 + 50;
+    ctx.save();
+    roundRect(ctx, cardX + padX, imgY, imgW, imgH, 28);
+    ctx.clip();
+    ctx.drawImage(bitmap, cardX + padX, imgY, imgW, imgH);
+    ctx.restore();
+    bitmap.close?.();
   }
 
   // Like

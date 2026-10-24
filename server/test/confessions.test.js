@@ -72,8 +72,9 @@ test('confession бичиж, жагсаалтад гарна', async () => {
 test('18+ баталгаа, төхөөрөмж, урт шалгана', async () => {
   assert.equal((await api('', { method: 'POST', device: devA, body: { text: 'Энэ бол урт текст шүү' } })).body.error, 'adult_confirmation_required');
   assert.equal((await post('Энэ бол урт текст шүү', null)).body.error, 'no_device');
-  assert.equal((await post('богино')).body.error, 'too_short');
-  assert.equal((await post('a'.repeat(501))).body.error, 'too_long');
+  assert.equal((await post('   ')).body.error, 'empty');
+  assert.equal((await post('богино')).status, 201);
+  assert.equal((await post('a'.repeat(1001), devB)).body.error, 'too_long');
 });
 
 test('утас, линк, хаяг бичихийг хориглоно', async () => {
@@ -244,4 +245,124 @@ test('хадгалсан өгөгдлөө дахин ачаална', async () =
   await b.ready;
   assert.equal(b._internal.items.get('cf_aaaaaaaaaaaa').likers.size, 2);
   await b.close();
+});
+
+
+// ---------- Зураг ба push ----------
+const fakeJpeg = (w = 640, h = 480, pad = 120) => {
+  const u16 = (n) => [(n >> 8) & 0xff, n & 0xff];
+  const bytes = [
+    0xff, 0xd8,
+    0xff, 0xe0, ...u16(16), 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
+    0xff, 0xc0, ...u16(17), 8, ...u16(h), ...u16(w), 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1,
+    ...Array.from({ length: pad }, (_, i) => (i * 7) % 251),
+    0xff, 0xd9,
+  ];
+  return Buffer.from(bytes).toString('base64');
+};
+
+test('зураг ганцаараа ч нийтлэгдэж, зураг нь гарна', async () => {
+  const r = await api('', { method: 'POST', device: devA, body: { adultConfirmed: true, image: { data: fakeJpeg() } } });
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.body.item.image, { w: 640, h: 480 });
+  assert.equal(r.body.item.text, '');
+  const img = await fetch(`${url}/api/confessions/${r.body.item.id}/image`);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/jpeg');
+  const buf = Buffer.from(await img.arrayBuffer());
+  assert.equal(buf.toString('base64'), fakeJpeg());
+  const list = await api('');
+  assert.deepEqual(list.body.items[0].image, { w: 640, h: 480 });
+});
+
+test('зураг: JPEG биш, хэт том, хэт өргөн бол татгалзана', async () => {
+  const bad = async (data) => (await api('', { method: 'POST', device: devA, body: { adultConfirmed: true, image: { data } } })).body.error;
+  assert.equal(await bad(Buffer.from('<svg onload=alert(1)>'.repeat(10)).toString('base64')), 'bad_image');
+  assert.equal(await bad(fakeJpeg(5000, 100)), 'bad_image');
+  assert.equal(await bad(fakeJpeg(100, 100, 352 * 1024)), 'image_too_large');
+  assert.equal(await bad(42), 'bad_image');
+});
+
+test('нуугдсан бичлэгийн зураг нээгдэхгүй, устгахад зураг хамт устна', async () => {
+  const r = await api('', { method: 'POST', device: devA, body: { adultConfirmed: true, text: 'Зурагтай нууц', image: { data: fakeJpeg() } } });
+  const id = r.body.item.id;
+  await adminApi(`/${id}/hide`, { method: 'POST', body: { hidden: true } });
+  assert.equal((await fetch(`${url}/api/confessions/${id}/image`)).status, 404);
+  const adminImg = await fetch(`${url}/api/admin/confessions/${id}/image`, { headers: { Authorization: 'Bearer secret' } });
+  assert.equal(adminImg.status, 200);
+  await adminApi(`/${id}/hide`, { method: 'POST', body: { hidden: false } });
+  assert.equal((await api(`/${id}`, { method: 'DELETE', device: devA })).status, 200);
+  assert.equal((await fetch(`${url}/api/confessions/${id}/image`)).status, 404);
+  assert.equal(await server.confessions._internal.items.has(id), false);
+});
+
+test('зурагтай бичлэг 2 мэдээлэлээр нуугдана', async () => {
+  const r = await api('', { method: 'POST', device: devA, body: { adultConfirmed: true, image: { data: fakeJpeg() } } });
+  const id = r.body.item.id;
+  assert.equal((await api(`/${id}/report`, { method: 'POST', device: devB, body: { reason: 'spam' } })).body.hidden, false);
+  assert.equal((await api(`/${id}/report`, { method: 'POST', device: devC, body: { reason: 'spam' } })).body.hidden, true);
+});
+
+const sub = (n) => ({
+  endpoint: `https://fcm.googleapis.com/fcm/send/test-${n}`,
+  keys: { p256dh: 'p'.repeat(87), auth: 'a'.repeat(22) },
+});
+
+test('шинэ бичлэг бусад захиалагчид push-ээр очно (бичсэн хүнд үгүй)', async () => {
+  const sent = [];
+  const origSend = server.push.send;
+  server.push.send = async (subscription, payload) => {
+    sent.push({ endpoint: subscription.endpoint, payload });
+    return 'sent';
+  };
+  try {
+    const { subs } = server.confessions._internal;
+    subs.clear();
+    assert.equal((await api('/subscribe', { method: 'POST', device: devA, body: { subscription: sub('a') } })).status, 200);
+    assert.equal((await api('/subscribe', { method: 'POST', device: devB, body: { subscription: sub('b') } })).status, 200);
+    assert.equal((await api('/subscribe', { method: 'POST', device: devC, body: { subscription: { endpoint: 'https://evil.example/x', keys: {} } } })).body.error, 'invalid_subscription');
+
+    const r = await post('Шинэ нууц бичлээ, бүгдэд мэдэгдээрэй');
+    assert.equal(r.status, 201);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].endpoint, sub('b').endpoint);
+    assert.equal(sent[0].payload.tag, 'noone-wall');
+    assert.equal(sent[0].payload.url, `/hana/${r.body.item.id}`);
+    assert.match(sent[0].payload.body, /Шинэ нууц бичлээ/);
+
+    // cooldown дотор дахин мэдэгдэхгүй
+    await post('Хоёр дахь нууц бичлэг энд байна');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(sent.length, 1);
+
+    // зураг ганцаараа бол "Шинэ зураг"
+    for (const s of subs.values()) s.lastNotified = 0;
+    await api('', { method: 'POST', device: devC, body: { adultConfirmed: true, image: { data: fakeJpeg() } } });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const last = sent.at(-1);
+    assert.equal(last.payload.body, '📷 Шинэ зураг');
+
+    // unsubscribe
+    await api('/subscribe', { method: 'DELETE', device: devB });
+    assert.equal(subs.size, 1);
+  } finally {
+    server.push.send = origSend;
+    server.confessions._internal.subs.clear();
+  }
+});
+
+test('push: хүчингүй бүртгэл (gone) устана', async () => {
+  const origSend = server.push.send;
+  server.push.send = async () => 'gone';
+  try {
+    const { subs } = server.confessions._internal;
+    subs.clear();
+    await api('/subscribe', { method: 'POST', device: devB, body: { subscription: sub('b') } });
+    await post('Бичлэг гарахад хуучин бүртгэл устах ёстой');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(subs.size, 0);
+  } finally {
+    server.push.send = origSend;
+  }
 });

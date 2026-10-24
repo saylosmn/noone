@@ -22,6 +22,7 @@ export function createApp(overrides = {}) {
   const confessions = createConfessions({
     config,
     adminAuth,
+    push,
     kv: createKv({
       upstashUrl: config.confessions.upstashUrl,
       upstashToken: config.confessions.upstashToken,

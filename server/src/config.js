@@ -53,8 +53,8 @@ export function loadConfig(overrides = {}) {
       upstashUrl: env.UPSTASH_REDIS_REST_URL || '',
       upstashToken: env.UPSTASH_REDIS_REST_TOKEN || '',
       file: env.CONFESSION_FILE || '',
-      minLength: int(env.CONFESSION_MIN_LENGTH, 10),
-      maxLength: int(env.CONFESSION_MAX_LENGTH, 500),
+      minLength: int(env.CONFESSION_MIN_LENGTH, 1),
+      maxLength: int(env.CONFESSION_MAX_LENGTH, 1000),
       maxItems: int(env.CONFESSION_MAX_ITEMS, 2000),
       retentionDays: int(env.CONFESSION_RETENTION_DAYS, 30),
       topWindowDays: int(env.CONFESSION_TOP_DAYS, 7),
@@ -62,6 +62,12 @@ export function loadConfig(overrides = {}) {
       postBurst: int(env.CONFESSION_POST_BURST, 3),
       postIntervalSec: int(env.CONFESSION_POST_INTERVAL_SEC, 300),
       saveDelayMs: int(env.CONFESSION_SAVE_DELAY_MS, 5000),
+      // Зураг: клиент JPEG болгож шахсан байх ёстой (дээд хэмжээ, дээд өргөн/өндөр)
+      imageMaxBytes: int(env.CONFESSION_IMAGE_MAX_BYTES, 350 * 1024),
+      imageMaxSide: int(env.CONFESSION_IMAGE_MAX_SIDE, 2048),
+      // Шинэ бичлэгийн push: нэг хэрэглэгчид хамгийн ихдээ N мс тутамд нэг
+      pushCooldownMs: int(env.CONFESSION_PUSH_COOLDOWN_MS, 3 * 60 * 1000),
+      maxSubscribers: int(env.CONFESSION_MAX_SUBSCRIBERS, 5000),
     },
     limits: {
       connectPerMinute: int(env.LIMIT_CONNECT_PER_MINUTE, 30),

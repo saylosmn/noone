@@ -18,6 +18,9 @@ if ('serviceWorker' in navigator) {
   });
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type === 'noone:open-chat') window.dispatchEvent(new CustomEvent('noone:open-chat'));
+    if (event.data?.type === 'noone:navigate' && typeof event.data.url === 'string') {
+      window.dispatchEvent(new CustomEvent('noone:navigate', { detail: event.data.url }));
+    }
   });
 }
 
