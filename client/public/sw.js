@@ -3,6 +3,7 @@
 
 const MATCH_BODY = 'Хүн олдлоо — чат эхэллээ';
 const MESSAGE_BODY = 'Шинэ мессеж ирлээ';
+const CALL_BODY = 'Дуудлага ирж байна';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -15,6 +16,7 @@ self.addEventListener('push', (event) => {
     data = {};
   }
   const isMatch = data.tag === 'noone-match';
+  const isCall = data.tag === 'noone-call';
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -22,9 +24,10 @@ self.addEventListener('push', (event) => {
       // Хэрэглэгч чат руугаа харж байвал мэдэгдэл хэрэггүй (Chrome ганц нэг удаа анхааруулж болно)
       if (focused) return;
       await self.registration.showNotification('noone', {
-        body: isMatch ? MATCH_BODY : MESSAGE_BODY,
-        tag: isMatch ? 'noone-match' : 'noone-message',
+        body: isMatch ? MATCH_BODY : isCall ? CALL_BODY : MESSAGE_BODY,
+        tag: isMatch ? 'noone-match' : isCall ? 'noone-call' : 'noone-message',
         renotify: true,
+        requireInteraction: isCall,
         icon: '/icon-192.png',
         badge: '/badge-72.png',
         data: { url: '/' },

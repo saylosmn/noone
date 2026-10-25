@@ -28,6 +28,30 @@ function safeEqual(a, b) {
 }
 
 /** Хяналтын тэмдэгтүүдийг арилгаж, мөр хоорондын хоосон зайг хязгаарлана. */
+const CALL_KINDS = ['invite', 'accept', 'decline', 'busy', 'end', 'offer', 'answer', 'ice'];
+
+/** WebRTC signaling мессежийг шалгаж, зөвхөн мэдэгдсэн талбаруудыг үлдээнэ. */
+export function sanitizeCallSignal(payload) {
+  if (!payload || typeof payload !== 'object' || !CALL_KINDS.includes(payload.kind)) return null;
+  const { kind } = payload;
+  if (kind === 'offer' || kind === 'answer') {
+    const sdp = payload.sdp;
+    if (typeof sdp !== 'string' || sdp.length < 20 || sdp.length > 12000 || !sdp.startsWith('v=0')) return null;
+    return { kind, sdp };
+  }
+  if (kind === 'ice') {
+    const cand = payload.candidate;
+    if (cand === null) return { kind, candidate: null }; // candidate-ууд дууссан
+    if (!cand || typeof cand !== 'object' || typeof cand.candidate !== 'string' || cand.candidate.length > 600) return null;
+    const mid = cand.sdpMid;
+    const idx = cand.sdpMLineIndex;
+    if (mid != null && (typeof mid !== 'string' || mid.length > 40)) return null;
+    if (idx != null && !(Number.isInteger(idx) && idx >= 0 && idx < 8)) return null;
+    return { kind, candidate: { candidate: cand.candidate, sdpMid: mid ?? null, sdpMLineIndex: idx ?? null } };
+  }
+  return { kind };
+}
+
 export function sanitizeText(input, maxLength) {
   if (typeof input !== 'string') return { error: 'invalid' };
   // eslint-disable-next-line no-control-regex
@@ -57,6 +81,8 @@ export function attachChat(io, { config, push, reports }) {
     queue: new KeyedLimiter({ capacity: 8, refillPerSec: 1 / 3 }),
     report: new KeyedLimiter({ capacity: 5, refillPerSec: 5 / 3600 }),
     misc: new KeyedLimiter({ capacity: 20, refillPerSec: 1 }),
+    callSignal: new KeyedLimiter({ capacity: 80, refillPerSec: 10 }),
+    callInvite: new KeyedLimiter({ capacity: 4, refillPerSec: 1 / 30 }),
   };
 
   const ipHash = (ip) =>
@@ -584,6 +610,28 @@ export function attachChat(io, { config, push, reports }) {
       if (!room || room.friendRevealed || !room.friend[c.id]) return { ok: false, error: 'not_allowed' };
       delete room.friend[c.id];
       emitTo(partnerOf(c, room), 'friend:cancelled', {});
+      return { ok: true };
+    });
+
+    // ---------- Дууны дуудлага (WebRTC signaling) ----------
+    // Сервер зөвхөн дамжуулна: дуу медиа нь хоёр хүний хооронд шууд явна, серверт хадгалагдахгүй.
+    on('call:signal', (c, payload) => {
+      const room = roomOf(c);
+      if (!room) return { ok: false, error: 'not_in_chat' };
+      const msg = sanitizeCallSignal(payload);
+      if (!msg) return { ok: false, error: 'invalid' };
+      if (!limits.callSignal.take(c.id).ok) return { ok: false, error: 'rate_limited' };
+      if (msg.kind === 'invite' && !limits.callInvite.take(c.id).ok) return { ok: false, error: 'rate_limited' };
+      const partner = partnerOf(c, room);
+      if (!partner?.socketId) {
+        // Апп хаалттай үед л дуудлагыг push-оор мэдэгдэнэ
+        if (msg.kind === 'invite' && partner) notifyPush(partner, { title: 'noone', body: 'Дуудлага ирж байна', tag: 'noone-call' }, true);
+        return { ok: false, error: 'partner_offline' };
+      }
+      emitTo(partner, 'call:signal', msg);
+      if (msg.kind === 'invite' && partner.visible === false) {
+        notifyPush(partner, { title: 'noone', body: 'Дуудлага ирж байна', tag: 'noone-call' }, true);
+      }
       return { ok: true };
     });
 
