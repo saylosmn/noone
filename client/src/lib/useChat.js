@@ -173,6 +173,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
   const cbRef = useRef({});
   cbRef.current = { onIncoming, onMatch, onToast, onSession };
   const socketRef = useRef(null);
+  const callListeners = useRef(new Set());
   const typingTimer = useRef(null);
   const lastSeenSent = useRef(null);
 
@@ -330,6 +331,7 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       cbRef.current.onIncoming?.({});
     });
 
+    socket.on('call:signal', (msg) => callListeners.current.forEach((fn) => fn(msg)));
     socket.on('chat:partner_status', ({ online }) => dispatch({ type: 'partner_status', online }));
 
     socket.on('chat:ended', ({ roomId, reason }) => {
@@ -579,6 +581,13 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
   );
   const removePushSubscription = useCallback(() => request('push:unsubscribe'), [request]);
 
+  // Дууны дуудлагын signaling (useVoiceCall ашиглана)
+  const callSignal = useCallback((payload) => request('call:signal', payload, 5000), [request]);
+  const onCallSignal = useCallback((fn) => {
+    callListeners.current.add(fn);
+    return () => callListeners.current.delete(fn);
+  }, []);
+
   return {
     state,
     actions: {
@@ -603,6 +612,8 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       restartFresh,
       sendPushSubscription,
       removePushSubscription,
+      callSignal,
+      onCallSignal,
     },
   };
 }

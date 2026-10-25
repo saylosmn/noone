@@ -14,6 +14,8 @@ import {
 } from '../lib/constants.js';
 import { formatTime, snippet } from '../lib/format.js';
 import { pickIcebreaker } from '../lib/icebreakers.js';
+import { local } from '../lib/storage.js';
+import { callSupported, useVoiceCall } from '../lib/useVoiceCall.js';
 import { Icon } from './Icon.jsx';
 import { ConfirmDialog, Modal } from './Modal.jsx';
 import { RatingCard } from './Feedback.jsx';
@@ -840,6 +842,64 @@ function FriendModal({ open, onClose, onSubmit, partnerOffered, last }) {
 }
 
 // ---------------- Чатын дэлгэц ----------------
+const CALL_CONSENT_KEY = 'noone.callConsent';
+const fmtCall = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+
+/** Дуудлагын самбар: дуудаж байна / ирж байна / яриа явагдаж байна */
+function CallBar({ call, onAccept }) {
+  const { status } = call;
+  if (status === 'idle' && !call.notice) return null;
+  if (status === 'idle') {
+    return (
+      <div className="call-bar is-note" role="status">
+        <Icon name="phoneOff" size={16} />
+        <span>{call.notice}</span>
+      </div>
+    );
+  }
+  const label = {
+    calling: 'Дуудаж байна…',
+    incoming: 'Нууц нэгэн залгаж байна',
+    connecting: 'Холбогдож байна…',
+    active: `Яриа явагдаж байна · ${fmtCall(call.seconds)}`,
+  }[status];
+  return (
+    <div className={`call-bar is-${status}`} role="status" aria-live="polite">
+      <span className="call-pulse" aria-hidden="true">
+        <Icon name="phone" size={18} />
+      </span>
+      <span className="call-label">{label}</span>
+      {status === 'incoming' ? (
+        <>
+          <button type="button" className="btn sm ok-btn" onClick={onAccept}>
+            <Icon name="phone" size={16} /> Хариулах
+          </button>
+          <button type="button" className="btn sm danger" onClick={call.decline}>
+            <Icon name="phoneOff" size={16} /> Татгалзах
+          </button>
+        </>
+      ) : (
+        <>
+          {(status === 'active' || status === 'connecting') && (
+            <button
+              type="button"
+              className={`icon-btn call-mute ${call.muted ? 'is-muted' : ''}`}
+              aria-pressed={call.muted}
+              aria-label={call.muted ? 'Микрофон асаах' : 'Микрофон хаах'}
+              onClick={call.toggleMute}
+            >
+              <Icon name={call.muted ? 'micOff' : 'mic'} size={18} />
+            </button>
+          )}
+          <button type="button" className="btn sm danger" onClick={call.hangup}>
+            <Icon name="phoneOff" size={16} /> {status === 'calling' ? 'Цуцлах' : 'Таслах'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Chat({ state, actions, settings, onOpenSettings }) {
   const { room, messages, partnerTyping, phase, ended, ratings, conn } = state;
   const partnerName = PARTNER_NAME;
@@ -855,6 +915,21 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
   const inputRef = useRef(null);
   const jumpRef = useRef({});
   const chatting = phase === 'chatting';
+  const call = useVoiceCall({
+    roomId: room?.roomId,
+    chatting,
+    partnerOnline,
+    signal: actions.callSignal,
+    onSignal: actions.onCallSignal,
+  });
+  const callBusy = call.status !== 'idle';
+  // IP хаяг ил гарах тухай анхааруулгыг нэг удаа зөвшөөрүүлнэ
+  const withCallConsent = (fn) => () => {
+    if (local.get(CALL_CONSENT_KEY, false)) fn();
+    else setDialog({ type: 'call-consent', fn });
+  };
+  const startCall = withCallConsent(call.start);
+  const acceptCall = withCallConsent(call.accept);
 
   // Өрөө солигдоход төлөвийг цэвэрлэнэ
   useEffect(() => {
@@ -996,6 +1071,18 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
               <Icon name={befriended ? 'heartHand' : 'userPlus'} size={20} />
             </button>
           )}
+          {chatting && callSupported() && (
+            <button
+              type="button"
+              className="icon-btn call-btn"
+              aria-label="Дуугаар ярих"
+              title="Дуугаар ярих"
+              disabled={callBusy || !partnerOnline || conn !== 'online'}
+              onClick={startCall}
+            >
+              <Icon name="phone" size={20} />
+            </button>
+          )}
           {chatting && (
             <button type="button" className="btn next-btn" onClick={actions.next} aria-label="Дараагийн хүн" title="Дараагийн хүн">
               <Icon name="next" size={18} />
@@ -1016,6 +1103,9 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
           />
         </div>
       </header>
+
+      <CallBar call={call} onAccept={acceptCall} />
+      <audio ref={call.audioRef} autoPlay playsInline />
 
       {(room?.sharedInterests?.length > 0 || room?.sharedSchool) && (
         <div className="shared-bar">
@@ -1138,6 +1228,18 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         confirmLabel="Дуусгах"
         tone="primary"
         onConfirm={actions.leave}
+        onClose={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        open={dialog?.type === 'call-consent'}
+        title="Дуугаар ярих уу?"
+        body="Дуудлага нь хоёр хүний хооронд шууд холбогдох тул ярьж байх хугацаанд нөгөө хүн таны IP хаягийг (ойролцоо байршил, интернэт үйлчилгээ үзүүлэгч) техникийн аргаар харах боломжтой. Хүсэхгүй бол бичээр үргэлжлүүлээрэй. Дууг сервер хадгалахгүй."
+        confirmLabel="Ойлголоо, үргэлжлүүлэх"
+        tone="primary"
+        onConfirm={() => {
+          local.set(CALL_CONSENT_KEY, true);
+          dialog?.fn?.();
+        }}
         onClose={() => setDialog(null)}
       />
       <ReportModal open={dialog === 'report'} onClose={() => setDialog(null)} onSubmit={actions.report} />

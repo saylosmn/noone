@@ -536,3 +536,58 @@ test('push-гүй хэрэглэгч түр гарсан ч мессеж хад�
   assert.equal((await emit(a, 'chat:message', { text: 'сайн уу' })).ok, true);
   assert.equal(server.chat._internal.clients.get(b.session.clientId).pending.length, 1);
 });
+
+// ---------- Дууны дуудлага (signaling) ----------
+const SDP = `v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n`;
+
+test('дуудлага: invite → accept → offer/answer/ice нөгөө хүнд дамжина', async () => {
+  const { a, b } = await matchedPair();
+  const gotInvite = waitFor(b, 'call:signal');
+  assert.equal((await emit(a, 'call:signal', { kind: 'invite' })).ok, true);
+  assert.deepEqual(await gotInvite, { kind: 'invite' });
+
+  const gotAccept = waitFor(a, 'call:signal');
+  await emit(b, 'call:signal', { kind: 'accept' });
+  assert.deepEqual(await gotAccept, { kind: 'accept' });
+
+  const gotOffer = waitFor(b, 'call:signal');
+  await emit(a, 'call:signal', { kind: 'offer', sdp: SDP });
+  assert.deepEqual(await gotOffer, { kind: 'offer', sdp: SDP });
+
+  const gotAnswer = waitFor(a, 'call:signal');
+  await emit(b, 'call:signal', { kind: 'answer', sdp: SDP });
+  assert.equal((await gotAnswer).kind, 'answer');
+
+  const gotIce = waitFor(b, 'call:signal');
+  await emit(a, 'call:signal', {
+    kind: 'ice',
+    candidate: { candidate: 'candidate:1 1 udp 2122 192.0.2.1 5000 typ host', sdpMid: '0', sdpMLineIndex: 0, extra: 'x' },
+  });
+  assert.deepEqual(await gotIce, {
+    kind: 'ice',
+    candidate: { candidate: 'candidate:1 1 udp 2122 192.0.2.1 5000 typ host', sdpMid: '0', sdpMLineIndex: 0 },
+  });
+
+  const gotEnd = waitFor(a, 'call:signal');
+  await emit(b, 'call:signal', { kind: 'end' });
+  assert.deepEqual(await gotEnd, { kind: 'end' });
+});
+
+test('дуудлага: буруу/том signal-ийг дамжуулахгүй, чатгүй хүн илгээж чадахгүй', async () => {
+  const { a, b } = await matchedPair();
+  assert.equal((await emit(a, 'call:signal', { kind: 'hack' })).error, 'invalid');
+  assert.equal((await emit(a, 'call:signal', { kind: 'offer', sdp: 'v=0'.padEnd(13000, 'x') })).error, 'invalid');
+  assert.equal((await emit(a, 'call:signal', { kind: 'offer', sdp: 'not an sdp at all, really not' })).error, 'invalid');
+  assert.equal((await emit(a, 'call:signal', { kind: 'ice', candidate: { candidate: 'x'.repeat(700) } })).error, 'invalid');
+  assert.equal((await emit(a, 'call:signal', { kind: 'ice', candidate: { candidate: 'c', sdpMLineIndex: 99 } })).error, 'invalid');
+  await expectNone(b, 'call:signal');
+
+  const lone = await connect();
+  assert.equal((await emit(lone, 'call:signal', { kind: 'invite' })).error, 'not_in_chat');
+});
+
+test('дуудлага: invite-ийг хурдан давтаж чадахгүй', async () => {
+  const { a } = await matchedPair();
+  for (let i = 0; i < 4; i += 1) assert.equal((await emit(a, 'call:signal', { kind: 'invite' })).ok, true);
+  assert.equal((await emit(a, 'call:signal', { kind: 'invite' })).error, 'rate_limited');
+});
