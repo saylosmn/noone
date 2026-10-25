@@ -5,11 +5,15 @@ import {
   CONFESSION_REPORT_REASONS,
   CONFESSION_RULES,
   CONFESSION_TAGS,
+  compressImage,
   confessionsApi,
   confessionUrl,
+  imageUrl,
   tagInfo,
   timeAgo,
 } from '../lib/confessions.js';
+import { ensurePushSubscription, isIOS, isStandalone, pushSupported } from '../lib/push.js';
+import { local } from '../lib/storage.js';
 import { renderStoryImage } from '../lib/storyImage.js';
 import { formatDuration } from '../lib/format.js';
 import { Icon, Logo } from './Icon.jsx';
@@ -68,7 +72,19 @@ function ConfessionCard({ item, highlight, isAdmin, onLike, onShare, onReport, o
         {item.mine && <span className="cf-mine">Таных</span>}
         <span className="cf-time">{timeAgo(item.ts)}</span>
       </div>
-      <p className="cf-text">{item.text}</p>
+      {item.text && <p className="cf-text">{item.text}</p>}
+      {item.image && (
+        <img
+          className="cf-image"
+          src={imageUrl(item.id)}
+          width={item.image.w}
+          height={item.image.h}
+          loading="lazy"
+          decoding="async"
+          alt="Нууц ханан дээрх зураг"
+          style={{ aspectRatio: `${item.image.w} / ${item.image.h}` }}
+        />
+      )}
       <div className="cf-actions">
         <button
           type="button"
@@ -137,6 +153,27 @@ function ComposeModal({ open, onClose, profile, onProfile, onPosted, onToast }) 
   const [adult, setAdult] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [image, setImage] = useState(null); // { data, w, h, previewUrl }
+  const [imageBusy, setImageBusy] = useState(false);
+  const fileRef = useRef(null);
+
+  // Preview URL-ыг чөлөөлнө
+  useEffect(() => () => image && URL.revokeObjectURL(image.previewUrl), [image]);
+
+  const pickImage = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImageBusy(true);
+    setError('');
+    try {
+      setImage(await compressImage(file));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImageBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -147,19 +184,26 @@ function ComposeModal({ open, onClose, profile, onProfile, onPosted, onToast }) 
   }, [open, profile.school, profile.adultConfirmed]);
 
   const length = [...text.trim()].length;
-  const tooShort = length < CONFESSION_LIMITS.min;
+  const empty = length === 0 && !image;
 
   const submit = async () => {
     if (busy) return;
     if (!adult) return setError('18 нас хүрсэн гэдгээ баталгаажуулна уу.');
-    if (tooShort) return setError(`Хамгийн багадаа ${CONFESSION_LIMITS.min} тэмдэгт бичнэ үү.`);
+    if (empty) return setError('Юм бичих эсвэл зураг сонгоно уу.');
     setBusy(true);
     setError('');
     try {
-      const { item } = await confessionsApi.create({ text, tag, school, adultConfirmed: true });
+      const { item } = await confessionsApi.create({
+        text,
+        tag,
+        school,
+        adultConfirmed: true,
+        image: image ? { data: image.data } : undefined,
+      });
       if (!profile.adultConfirmed) onProfile({ ...profile, adultConfirmed: true });
       setText('');
       setTag('secret');
+      setImage(null);
       onClose();
       onPosted(item);
     } catch (err) {
@@ -180,7 +224,7 @@ function ComposeModal({ open, onClose, profile, onProfile, onPosted, onToast }) 
           <button type="button" className="btn ghost" onClick={onClose}>
             Болих
           </button>
-          <button type="button" className="btn primary" disabled={busy || !length} onClick={submit}>
+          <button type="button" className="btn primary" disabled={busy || imageBusy || empty} onClick={submit}>
             {busy ? 'Нийтэлж байна…' : 'Нэргүй нийтлэх'}
           </button>
         </>
@@ -193,7 +237,7 @@ function ComposeModal({ open, onClose, profile, onProfile, onPosted, onToast }) 
             data-autofocus
             rows={6}
             maxLength={CONFESSION_LIMITS.max}
-            placeholder="Хэнд ч хэлж чадаагүй зүйлээ энд бич… Хэн бичсэнийг хэн ч мэдэхгүй."
+            placeholder="Юу ч бич — нууц, санаа, асуулт, мэдрэмж… Хэн бичсэнийг хэн ч мэдэхгүй."
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -203,6 +247,22 @@ function ComposeModal({ open, onClose, profile, onProfile, onPosted, onToast }) 
           <span className={`compose-count ${length > CONFESSION_LIMITS.max - 40 ? 'is-warn' : ''}`}>
             {length}/{CONFESSION_LIMITS.max}
           </span>
+        </div>
+
+        <div className="compose-image">
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
+          {image ? (
+            <div className="compose-image-preview">
+              <img src={image.previewUrl} alt="Сонгосон зураг" />
+              <button type="button" className="icon-btn sm compose-image-remove" aria-label="Зураг хасах" onClick={() => setImage(null)}>
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="btn ghost sm" disabled={imageBusy} onClick={() => fileRef.current?.click()}>
+              <Icon name="image" size={18} /> {imageBusy ? 'Зураг бэлдэж байна…' : 'Зураг нэмэх'}
+            </button>
+          )}
         </div>
 
         <div className="field">
@@ -431,6 +491,69 @@ function SearchingBar({ search, onBack, onCancel }) {
   );
 }
 
+// ---------------- Шинэ бичлэгийн мэдэгдэл ----------------
+const WALL_PUSH_KEY = 'noone.wallpush';
+
+function useWallPush(onToast) {
+  const supported = pushSupported();
+  const [on, setOn] = useState(() => supported && local.get(WALL_PUSH_KEY, false) === true && Notification.permission === 'granted');
+  const [busy, setBusy] = useState(false);
+
+  // Хөтөч/серверийн түлхүүр солигдсон байж болох тул нээх бүрт дахин бүртгүүлнэ
+  useEffect(() => {
+    if (!on) return;
+    ensurePushSubscription()
+      .then((sub) => sub && confessionsApi.subscribe(sub))
+      .catch(() => {});
+  }, [on]);
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (on) {
+        await confessionsApi.unsubscribe().catch(() => {});
+        local.set(WALL_PUSH_KEY, false);
+        setOn(false);
+        onToast('Мэдэгдэл унтарлаа.', 'success');
+        return;
+      }
+      if (!supported) {
+        onToast(
+          isIOS() && !isStandalone()
+            ? 'iPhone дээр эхлээд Share → Add to Home Screen хийж, нүүр дэлгэцээс нээгээд асаана уу.'
+            : 'Энэ хөтөч мэдэгдэл дэмжихгүй байна.',
+        );
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        onToast('Мэдэгдэл хөтчийн тохиргоонд хаагдсан байна. Сайтын тохиргооноос зөвшөөрнө үү.');
+        return;
+      }
+      const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (permission !== 'granted') {
+        onToast('Мэдэгдэл зөвшөөрөгдсөнгүй.');
+        return;
+      }
+      const sub = await ensurePushSubscription();
+      if (!sub) {
+        onToast('Сервер мэдэгдэл илгээх боломжгүй байна. Түр хүлээгээд дахин оролдоно уу.');
+        return;
+      }
+      await confessionsApi.subscribe(sub);
+      local.set(WALL_PUSH_KEY, true);
+      setOn(true);
+      onToast('Шинэ нууц бичигдэх бүрт мэдэгдэнэ 🔔', 'success');
+    } catch (err) {
+      onToast(err.message || 'Алдаа гарлаа. Дахин оролдоно уу.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { on, busy, toggle };
+}
+
 // ---------------- Нууц хана ----------------
 export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, onToast, searching, search, onCancelSearch }) {
   const [sort, setSort] = useState('new');
@@ -447,6 +570,7 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
   const [reporting, setReporting] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const reqId = useRef(0);
+  const wallPush = useWallPush(onToast);
   const [adminToken] = useState(adminSessionToken);
   // Modal-ын onClose тогтвортой байх ёстой (эс тэгвээс focus үсэрнэ)
   const closeCompose = useCallback(() => setComposeOpen(false), []);
@@ -608,6 +732,17 @@ export function Confessions({ focusId, profile, onProfile, onBack, onNavigate, o
             </span>
           </button>
         </section>
+
+        <button
+          type="button"
+          className={`wall-notify ${wallPush.on ? 'is-on' : ''}`}
+          aria-pressed={wallPush.on}
+          disabled={wallPush.busy}
+          onClick={wallPush.toggle}
+        >
+          <Icon name="bell" size={18} />
+          <span>{wallPush.on ? 'Шинэ нууцад мэдэгдэнэ · унтраах' : 'Шинэ нууц бичигдэх бүрт мэдэгдэх'}</span>
+        </button>
 
         {focused && <ConfessionCard item={focused} highlight {...cardProps} />}
 

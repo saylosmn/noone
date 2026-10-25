@@ -117,8 +117,31 @@ function Login({ onLogin }) {
   );
 }
 
+// Нуугдсан зургийг ч харахын тулд токентойгоор татна
+function AdminImage({ token, item }) {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    let url = '';
+    let cancelled = false;
+    fetch(apiUrl(`/api/admin/confessions/${item.id}/image`), { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!blob || cancelled) return;
+        url = URL.createObjectURL(blob);
+        setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [token, item.id]);
+  if (!src) return <div className="cf-image cf-image-loading" aria-hidden="true" />;
+  return <img className="cf-image" src={src} alt="Зураг" width={item.image.w} height={item.image.h} />;
+}
+
 // ---------------- Нэг бичлэг ----------------
-function AdminItem({ item, onAction }) {
+function AdminItem({ item, token, onAction }) {
   const tag = tagInfo(item.tag);
   let status;
   if (item.hidden) status = <span className="adm-badge bad">{item.hiddenBy === 'reports' ? 'Мэдээллээр нуугдсан' : 'Нуугдсан'}</span>;
@@ -136,7 +159,8 @@ function AdminItem({ item, onAction }) {
           {timeAgo(item.ts)} · ❤ {item.likes}
         </span>
       </div>
-      <p className="cf-text">{item.text}</p>
+      {item.text && <p className="cf-text">{item.text}</p>}
+      {item.image && <AdminImage token={token} item={item} />}
       {item.reports > 0 && (
         <div className="adm-reports">
           <strong>🚩 {item.reports} мэдээлэл:</strong>{' '}
@@ -429,7 +453,7 @@ export function Admin({ onExit, onToast }) {
             {data?.items?.length === 0 && (
               <p className="wall-empty">{filter === 'reported' ? '🎉 Мэдээлэгдсэн бичлэг алга.' : 'Бичлэг алга.'}</p>
             )}
-            {data?.items?.map((item) => <AdminItem key={item.id} item={item} onAction={onAction} />)}
+            {data?.items?.map((item) => <AdminItem key={item.id} item={item} token={token} onAction={onAction} />)}
           </section>
         )}
       </main>

@@ -113,6 +113,19 @@ export default function App() {
     if (state.phase === 'chatting' && route.view !== 'home') navigate('/', { replace: true });
   }, [state.phase, route.view, navigate]);
 
+  // Мэдэгдэл дарахад нээлттэй цонхыг тухайн нууц руу шилжүүлнэ (зөвхөн /hana замууд)
+  useEffect(() => {
+    const onNavigate = (e) => {
+      const url = e.detail;
+      if (typeof url === 'string' && /^\/hana(\/cf_[a-f0-9]{12})?$/.test(url)) {
+        window.focus();
+        navigate(url);
+      }
+    };
+    window.addEventListener('noone:navigate', onNavigate);
+    return () => window.removeEventListener('noone:navigate', onNavigate);
+  }, [navigate]);
+
   // Таб-ын гарчигт уншаагүй тоо
   useEffect(() => {
     document.title = unread ? `(${unread}) Шинэ мессеж · noone` : BASE_TITLE;

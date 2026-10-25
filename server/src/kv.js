@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, rm } from 'node:fs/promises';
 
 /**
  * Энгийн key-value хадгалалт. Нууц ханын (confession) өгөгдлийг сервер дахин асахад
@@ -31,24 +31,35 @@ export function createKv({ upstashUrl, upstashToken, file } = {}) {
       async set(key, value) {
         await command(['SET', key, JSON.stringify(value)]);
       },
+      async del(key) {
+        await command(['DEL', key]);
+      },
     };
   }
 
   if (file) {
+    // Үндсэн түлхүүр → `file`; бусад (жишээ нь зураг) → `${file}.d/<түлхүүр>.json`
+    const pathFor = (key) =>
+      key.startsWith('noone:confessions:') ? file : `${file}.d/${key.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`;
     return {
       kind: 'file',
-      async get() {
+      async get(key) {
         try {
-          return JSON.parse(await readFile(file, 'utf8'));
+          return JSON.parse(await readFile(pathFor(key), 'utf8'));
         } catch (err) {
           if (err.code === 'ENOENT') return null;
           throw err;
         }
       },
-      async set(_key, value) {
-        const tmp = `${file}.tmp`;
+      async set(key, value) {
+        const target = pathFor(key);
+        if (target !== file) await mkdir(`${file}.d`, { recursive: true });
+        const tmp = `${target}.tmp`;
         await writeFile(tmp, JSON.stringify(value));
-        await rename(tmp, file);
+        await rename(tmp, target);
+      },
+      async del(key) {
+        await rm(pathFor(key), { force: true });
       },
     };
   }
@@ -61,6 +72,9 @@ export function createKv({ upstashUrl, upstashToken, file } = {}) {
     },
     async set(key, value) {
       mem.set(key, structuredClone(value));
+    },
+    async del(key) {
+      mem.delete(key);
     },
   };
 }

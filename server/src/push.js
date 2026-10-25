@@ -65,11 +65,11 @@ export function createPush(config) {
      * Мессежийн агуулгыг хэзээ ч push-д оруулахгүй — зөвхөн ерөнхий текст.
      * @returns {Promise<'sent'|'gone'|'failed'|'disabled'>}
      */
-    async send(subscription, payload) {
+    async send(subscription, payload, { ttl = 60 } = {}) {
       if (!enabled || !subscription) return 'disabled';
       try {
         await webpush.sendNotification(subscription, JSON.stringify(payload), {
-          TTL: 60,
+          TTL: ttl,
           urgency: 'high',
         });
         return 'sent';
