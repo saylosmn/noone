@@ -1,0 +1,17 @@
+.noone-cinematic { position:relative; isolation:isolate; background:var(--bg); overflow:hidden; }
+.noone-atmosphere { position:absolute; inset:0; z-index:-1; pointer-events:none; overflow:hidden; background:radial-gradient(ellipse at 50% 20%,#48217c55,transparent 60%); }
+.noone-atmosphere video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; opacity:.48; }
+.noone-atmosphere canvas { position:absolute; inset:0; width:100%; height:100%; }
+.noone-atmosphere-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(3,11,27,.18),rgba(3,11,27,.36) 40%,var(--bg) 98%); }
+.noone-motion-toggle { pointer-events:auto; position:absolute; bottom:12px; right:18px; border:1px solid var(--border-strong); border-radius:20px; background:var(--surface); color:var(--text-2); padding:7px 12px; font-size:10px; cursor:pointer; }
+.noone-cinematic .topbar { background:transparent; border-bottom-color:transparent; }
+.noone-cinematic .topbar-right { padding:8px 12px; border:1px solid #ffffff18; border-radius:20px; background:rgba(12,15,35,.5); backdrop-filter:blur(20px); box-shadow:0 12px 36px #0002; }
+.noone-cinematic .hero h1 { text-shadow:0 4px 40px #9955ee33; }
+.noone-cinematic .setup-card { background:color-mix(in srgb,var(--surface) 76%,transparent); backdrop-filter:blur(24px); border:1px solid #c0a4ff35; box-shadow:0 24px 90px #0005,inset 0 1px 0 #ffffff14; }
+.noone-cinematic .mode-card,.noone-cinematic .gender-btn { backdrop-filter:blur(12px); transition:transform .22s,border-color .22s,box-shadow .22s; }
+.noone-cinematic .mode-card:hover,.noone-cinematic .gender-btn:hover { transform:translateY(-2px); box-shadow:0 8px 24px #8d45e51a; }
+.noone-cinematic .start-btn { background:linear-gradient(135deg,#9500e5,#c21ced); box-shadow:0 12px 35px #9500e533; transition:transform .22s,box-shadow .22s; }
+.noone-cinematic .start-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 16px 40px #9500e555; }
+.noone-cinematic .landing-main { padding-bottom:58px; }
+@media(max-width:600px) { .noone-cinematic .topbar-right { padding:5px; gap:5px; } }
+@media(prefers-reduced-motion:reduce) { .noone-cinematic .mode-card,.noone-cinematic .gender-btn,.noone-cinematic .start-btn { transition:none; transform:none!important; } }
