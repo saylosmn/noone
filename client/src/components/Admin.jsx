@@ -8,6 +8,32 @@ import { ConfirmDialog, Modal } from './Modal.jsx';
 
 const TOKEN_KEY = 'noone.adminToken';
 
+function DateMetrics({ token }) {
+  const [metrics, setMetrics] = useState(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const res = await fetch(apiUrl('/api/admin/chat-stats'), { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+        if (!res.ok) throw new Error('stats');
+        const data = await res.json();
+        setMetrics(data.dateMetrics); setError(false);
+      } catch { if (!controller.signal.aborted) setError(true); }
+    };
+    load();
+    const timer = setInterval(load, 30000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [token]);
+  return <section className="date-metrics" aria-label="Blind date-ийн үзүүлэлт">
+    <strong>💘 Blind date · Туршилтын үзүүлэлт</strong>
+    {error ? <p role="status">Үзүүлэлт татаж чадсангүй. 30 секундийн дараа дахин оролдоно.</p> : !metrics ? <p>Ачаалж байна…</p> : <>
+      <dl>{[['joins', 'Хайлтууд'], ['matches', 'Таарсан хос'], ['mutualSteps', 'Харилцан зөвшөөрсөн шат'], ['completed', 'Сошиалын шатанд хүрсэн хос'], ['returningSessions', 'Дахин таарсан сесс']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{metrics[key]}</dd></div>)}</dl>
+      <p>{new Date(metrics.since).toLocaleString('mn-MN', { timeZone: 'Asia/Ulaanbaatar' })} (УБ)-с хойших тоо. Сервер дахин асахад тэглэгдэнэ. Дахин таарсан сесс = нэг түр сесс хоёр дахь болзоондоо таарсан; өөр өдөр эргэн ирсэн хүний тоо биш.</p>
+    </>}
+  </section>;
+}
+
 /** Админ нэвтэрсэн бол нууц хана дээрээс шууд устгах боломжтой */
 export const adminSessionToken = () => session.get(TOKEN_KEY, '');
 const reasonLabel = (id) => CONFESSION_REPORT_REASONS.find((r) => r.id === id)?.label ?? id;
@@ -389,6 +415,7 @@ export function Admin({ onExit, onToast }) {
       </header>
 
       <main className="admin-main">
+        <DateMetrics token={token} />
         {data?.storage === 'memory' && (
           <div className="adm-warn" role="alert">
             ⚠️ Нууц хана санах ойд л хадгалагдаж байна — сервер дахин асахад бүгд устна. Render-д{' '}

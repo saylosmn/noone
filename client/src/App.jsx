@@ -41,6 +41,7 @@ export default function App() {
 
   const [profile, setProfile] = useState(() => ({
     gender: null,
+    mode: 'chat',
     interests: [],
     school: null,
     adultConfirmed: false,
@@ -219,6 +220,7 @@ export default function App() {
         conn={state.conn}
         profile={profile}
         onCancel={actions.cancelSearch}
+        onBroaden={actions.broadenSearch}
         pendingRating={state.pendingRating}
         ratings={state.ratings}
         onRate={actions.rate}

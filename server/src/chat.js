@@ -11,6 +11,7 @@ import {
   sharedSchool as getSharedSchool,
   STICKERS,
 } from './constants.js';
+import { blindDateWindow, BLIND_STAGES, DATE_QUESTIONS, sanitizeDateProfile } from './blindDate.js';
 import { maskProfanity } from './profanity.js';
 import { isValidSubscription } from './push.js';
 
@@ -71,6 +72,8 @@ export function attachChat(io, { config, push, reports }) {
   const rooms = new Map(); // roomId -> room
   const queues = { male: new Set(), female: new Set() };
   const restrictions = new Map(); // ipHash -> { reports: [{ts, by}], bannedUntil }
+  const dateMetrics = { since: Date.now(), joins: 0, matches: 0, mutualSteps: 0, completed: 0, returningSessions: 0 };
+  const eventWindow = () => blindDateWindow(config.now?.() ?? Date.now());
   const counters = { matches: 0, ratings: { good: 0, bad: 0 }, reports: 0 };
 
   const limits = {
@@ -108,6 +111,8 @@ export function attachChat(io, { config, push, reports }) {
 
   const statsPayload = () => ({
     online: onlineCount(),
+    blindDate: eventWindow(),
+    waitingByMode: Object.fromEntries(['chat', 'blind'].map(mode => [mode, Object.fromEntries(['male', 'female'].map(gender => [gender, [...queues[gender]].filter(id => clients.get(id)?.mode === mode).length]))])),
     waiting: { male: queues.male.size, female: queues.female.size },
   });
 
@@ -135,6 +140,9 @@ export function attachChat(io, { config, push, reports }) {
       ipHash: ipH,
       socketId: null,
       gender: null,
+      mode: 'chat',
+      dateMatches: 0,
+      flexible: false,
       interests: [],
       school: null,
       adultConfirmed: false,
@@ -184,6 +192,8 @@ export function attachChat(io, { config, push, reports }) {
         startedAt: room.startedAt,
         sharedInterests: room.sharedInterests,
         sharedSchool: room.sharedSchool,
+        mode: room.mode,
+        blind: describeDate(room, client),
         // Түр гарсан ч 2 минут болоогүй бол онлайн гэж харуулна
         partner: { nickname: PARTNER_NAME, online: Boolean(partner && (partner.socketId || !partner.awayNotified)) },
         friend: {
@@ -195,6 +205,23 @@ export function attachChat(io, { config, push, reports }) {
     };
   }
 
+  function describeDate(room, client) {
+    if (!room.blind) return null;
+    const partnerId = room.a === client.id ? room.b : room.a;
+    const bothProfiles = Boolean(room.blind.profiles[room.a] && room.blind.profiles[room.b]);
+    return { stage: room.blind.stage, question: room.blind.question,
+      ready: Boolean(room.blind.ready[client.id]),
+      profileOffered: Boolean(room.blind.profiles[client.id]),
+      mine: room.blind.profiles[client.id] || null,
+      partnerProfile: bothProfiles ? room.blind.profiles[partnerId] : null };
+  }
+  function emitDate(room) {
+    for (const id of [room.a, room.b]) {
+      const c = clients.get(id);
+      if (c) emitTo(c, 'date:state', { roomId: room.id, blind: describeDate(room, c) });
+    }
+  }
+
   // ---------- Дараалал ----------
   function removeFromQueue(client) {
     queues.male.delete(client.id);
@@ -203,7 +230,7 @@ export function attachChat(io, { config, push, reports }) {
   }
 
   const hasPrefs = (c) => c.interests.length > 0 || Boolean(c.school);
-  const isFlexible = (c, now) => !hasPrefs(c) || now - c.queuedAt >= config.interestWaitMs;
+  const isFlexible = (c, now) => c.flexible || !hasPrefs(c) || now - c.queuedAt >= config.interestWaitMs;
 
   const isBlocked = (a, b) => a.blocked.has(b.id) || b.blocked.has(a.id);
 
@@ -214,6 +241,7 @@ export function attachChat(io, { config, push, reports }) {
 
   function tryMatch(client) {
     if (client.status !== 'queued' || !client.socketId) return false;
+    if (client.mode === 'blind' && !eventWindow().open) return false;
     const now = Date.now();
     let best = null;
     let bestShared = [];
@@ -222,6 +250,7 @@ export function attachChat(io, { config, push, reports }) {
     for (const otherId of queues[opposite(client.gender)]) {
       const other = clients.get(otherId);
       if (!other || other.status !== 'queued' || !other.socketId) continue;
+      if (client.mode !== other.mode) continue;
       if (isBlocked(client, other) || recentlyPaired(client, other, now)) continue;
       const shared = client.interests.filter((i) => other.interests.includes(i));
       const school = getSharedSchool(client.school, other.school);
@@ -256,8 +285,17 @@ export function attachChat(io, { config, push, reports }) {
       sharedSchool,
       friend: {}, // clientId -> { platform, handle } — чат дуусахад устна
       friendRevealed: false,
+      mode: a.mode,
+      blind: a.mode === 'blind' ? { stage: 'icebreaker', ready: {}, profiles: {}, question: DATE_QUESTIONS[Math.floor(Math.random() * DATE_QUESTIONS.length)] } : null,
     };
     rooms.set(room.id, room);
+    if (room.blind) {
+      dateMetrics.matches++;
+      for (const c of [a, b]) {
+        if (c.dateMatches === 1) dateMetrics.returningSessions++;
+        c.dateMatches++;
+      }
+    }
     for (const [me, other] of [[a, b], [b, a]]) {
       me.status = 'chatting';
       me.roomId = room.id;
@@ -267,6 +305,8 @@ export function attachChat(io, { config, push, reports }) {
         startedAt: now,
         sharedInterests,
         sharedSchool,
+        mode: room.mode,
+        blind: describeDate(room, me),
         partner: { nickname: PARTNER_NAME, online: true },
       });
       if (!me.visible) notifyPush(me, { title: 'noone', body: 'Хүн олдлоо — чат эхэллээ', tag: 'noone-match' });
@@ -308,9 +348,11 @@ export function attachChat(io, { config, push, reports }) {
     }
   }
 
-  function enqueue(client, { gender, interests, school }) {
+  function enqueue(client, { gender, interests, school, mode = 'chat' }) {
     removeFromQueue(client);
     client.gender = gender;
+    client.mode = mode;
+    client.flexible = false;
     client.interests = interests;
     client.school = school ?? null;
     client.status = 'queued';
@@ -343,6 +385,11 @@ export function attachChat(io, { config, push, reports }) {
       .sort((x, y) => x.queuedAt - y.queuedAt);
     for (const c of queued) {
       if (c.status !== 'queued') continue;
+      if (c.mode === 'blind' && !eventWindow().open) {
+        removeFromQueue(c);
+        emitTo(c, 'queue:closed', { reason: 'date_closed' });
+        continue;
+      }
       if (!c.phaseAnnounced && isFlexible(c, now)) {
         c.phaseAnnounced = true;
         emitTo(c, 'queue:status', { phase: 'anyone', since: c.queuedAt });
@@ -461,6 +508,9 @@ export function attachChat(io, { config, push, reports }) {
 
     on('queue:join', (c, payload) => {
       if (c.status === 'chatting') return { ok: false, error: 'already_chatting' };
+      const mode = payload.mode ?? 'chat';
+      if (!['chat', 'blind'].includes(mode)) return { ok: false, error: 'invalid' };
+      if (mode === 'blind' && !eventWindow().open) return { ok: false, error: 'date_closed' };
       const gender = payload.gender;
       if (!GENDERS.includes(gender)) return { ok: false, error: 'invalid_gender' };
       if (payload.adultConfirmed !== true && !c.adultConfirmed) {
@@ -475,8 +525,51 @@ export function attachChat(io, { config, push, reports }) {
       if (until) return { ok: false, error: 'restricted', retryAfterMs: until - Date.now() };
       const school = SCHOOLS.includes(payload.school) ? payload.school : null;
       c.adultConfirmed = true;
-      enqueue(c, { gender, interests, school });
+      if (mode === 'blind' && c.status !== 'queued') dateMetrics.joins++;
+      enqueue(c, { gender, interests, school, mode });
       return { ok: true, status: c.status };
+    });
+
+    on('queue:broaden', (c) => {
+      if (c.status !== 'queued') return { ok: false, error: 'not_allowed' };
+      c.flexible = true;
+      c.phaseAnnounced = true;
+      emitTo(c, 'queue:status', { phase: 'anyone', since: c.queuedAt });
+      tryMatch(c);
+      return { ok: true };
+    });
+
+    on('date:advance', (c, payload) => {
+      const room = roomOf(c);
+      if (!room?.blind || payload.roomId !== room.id || payload.stage !== room.blind.stage) return { ok: false, error: 'date_stale' };
+      if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
+      const index = BLIND_STAGES.indexOf(room.blind.stage);
+      if (index >= BLIND_STAGES.length - 1) return { ok: false, error: 'not_allowed' };
+      room.blind.ready[c.id] = payload.ready === true;
+      if (room.blind.ready[room.a] && room.blind.ready[room.b]) {
+        room.blind.stage = BLIND_STAGES[index + 1];
+        room.blind.ready = {};
+        dateMetrics.mutualSteps++;
+        if (room.blind.stage === 'connect') dateMetrics.completed++;
+      }
+      emitDate(room);
+      return { ok: true };
+    });
+
+    on('date:profile', (c, payload) => {
+      const room = roomOf(c);
+      if (!room?.blind || payload.roomId !== room.id || room.blind.stage !== 'reveal') return { ok: false, error: 'date_stale' };
+      if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
+      const both = room.blind.profiles[room.a] && room.blind.profiles[room.b];
+      if (both) return { ok: false, error: 'already_revealed' };
+      if (payload.cancel === true) delete room.blind.profiles[c.id];
+      else {
+        const profile = sanitizeDateProfile(payload);
+        if (!profile) return { ok: false, error: 'invalid_profile' };
+        room.blind.profiles[c.id] = profile;
+      }
+      emitDate(room);
+      return { ok: true };
     });
 
     on('queue:leave', (c) => {
@@ -587,6 +680,7 @@ export function attachChat(io, { config, push, reports }) {
     on('friend:offer', (c, payload) => {
       const room = roomOf(c);
       if (!room) return { ok: false, error: 'not_in_chat' };
+      if (room.blind && room.blind.stage !== 'connect') return { ok: false, error: 'date_locked' };
       if (room.friendRevealed) return { ok: false, error: 'already_revealed' };
       if (!CONTACT_PLATFORMS.includes(payload.platform)) return { ok: false, error: 'invalid_platform' };
       const handle = typeof payload.handle === 'string' ? payload.handle.trim().replace(/\s+/g, ' ') : '';
@@ -618,6 +712,7 @@ export function attachChat(io, { config, push, reports }) {
     on('call:signal', (c, payload) => {
       const room = roomOf(c);
       if (!room) return { ok: false, error: 'not_in_chat' };
+      if (room.blind && !['voice', 'reveal', 'connect'].includes(room.blind.stage)) return { ok: false, error: 'date_locked' };
       const msg = sanitizeCallSignal(payload);
       if (!msg) return { ok: false, error: 'invalid' };
       if (!limits.callSignal.take(c.id).ok) return { ok: false, error: 'rate_limited' };
@@ -651,7 +746,9 @@ export function attachChat(io, { config, push, reports }) {
       if (!lim.ok) return { ok: false, error: 'rate_limited', retryAfterMs: lim.retryAfterMs, endedRoomId };
       const until = restrictedUntil(c);
       if (until) return { ok: false, error: 'restricted', retryAfterMs: until - Date.now(), endedRoomId };
-      enqueue(c, { gender: c.gender, interests: c.interests, school: c.school });
+      if (c.mode === 'blind' && !eventWindow().open) return { ok: false, error: 'date_closed', endedRoomId };
+      if (c.mode === 'blind') dateMetrics.joins++;
+      enqueue(c, { gender: c.gender, interests: c.interests, school: c.school, mode: c.mode });
       return { ok: true, endedRoomId, status: c.status };
     });
 
@@ -762,7 +859,7 @@ export function attachChat(io, { config, push, reports }) {
   }
 
   return {
-    stats: () => ({ ...statsPayload(), rooms: rooms.size, ...counters }),
+    stats: () => ({ ...statsPayload(), rooms: rooms.size, ...counters, dateMetrics: { ...dateMetrics } }),
     /** Тестэд зориулсан дотоод төлөв */
     _internal: { clients, rooms, queues },
     close() {

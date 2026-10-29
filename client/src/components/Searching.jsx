@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { interestLabel } from '../lib/constants.js';
+import { interestLabel, schoolLabel } from '../lib/constants.js';
 import { formatDuration } from '../lib/format.js';
 import { Icon, Logo } from './Icon.jsx';
 import { OnlinePill, WallLink } from './Landing.jsx';
@@ -20,6 +20,7 @@ export function Searching({
   conn,
   profile,
   onCancel,
+  onBroaden,
   pendingRating,
   ratings,
   onRate,
@@ -32,9 +33,10 @@ export function Searching({
   const now = useNow();
   const since = search.since || now;
   const opposite = profile.gender === 'male' ? 'female' : 'male';
-  const waitingOpposite = stats.waiting?.[opposite] ?? 0;
+  const mode = profile.mode || 'chat';
+  const waitingOpposite = stats.waitingByMode?.[mode]?.[opposite] ?? stats.waiting?.[opposite] ?? 0;
   const oppositeLabel = opposite === 'male' ? 'эрэгтэй' : 'эмэгтэй';
-  const hasInterests = profile.interests.length > 0;
+  const hasInterests = profile.interests.length > 0 || Boolean(profile.school);
   const offline = conn !== 'online';
 
   let title = 'Хүн хайж байна…';
@@ -43,11 +45,11 @@ export function Searching({
     title = 'Холболтыг хүлээж байна…';
     sub = 'Холболт сэргэмэгц автоматаар үргэлжлүүлэн хайна.';
   } else if (hasInterests && search.phase === 'interest') {
-    title = 'Ижил сонирхолтой хүн хайж байна…';
-    sub = `Сонирхол: ${profile.interests.map(interestLabel).join(', ')}`;
+    title = 'Тохирох хүн хүлээж байна…';
+    sub = [profile.interests.map(interestLabel).join(', '), profile.school ? schoolLabel(profile.school) : ''].filter(Boolean).join(' · ');
   } else if (hasInterests) {
     title = 'Бусад хүмүүсээс хайж байна…';
-    sub = 'Ижил сонирхолтой хүн одоогоор алга тул хэнтэй ч холбоно.';
+    sub = 'Сонирхол, сургуулиар хязгаарлахгүй хайж байна. Блоклосон хүнтэй холбохгүй.';
   } else {
     sub = 'Эсрэг хүйсийн санамсаргүй хүнтэй холбоно.';
   }
@@ -74,6 +76,7 @@ export function Searching({
           </span>
         </div>
 
+        {mode === 'blind' && <p className="eyebrow">💘 Blind date · 20:00–04:00</p>}
         <h1 className="search-title">{title}</h1>
         <p className="search-sub">{sub}</p>
         <p className="search-meta">
@@ -84,6 +87,8 @@ export function Searching({
             : `Одоогоор хүлээж буй ${oppositeLabel} алга — орж ирмэгц холбоно`}
         </p>
 
+        {search.phase === 'interest' && !offline && <button type="button" className="btn primary" onClick={onBroaden}>Шүүлтүүрээ өргөжүүлэх</button>}
+        {now - since > 20000 && !offline && <p className="hint">Хүлээлтийн хугацаа хүнээс хамаарна. Хүсвэл цуцлаад дараа дахин орж болно.</p>}
         <button type="button" className="btn ghost" onClick={onCancel}>
           Цуцлах
         </button>

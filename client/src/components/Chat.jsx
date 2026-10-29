@@ -15,6 +15,7 @@ import {
 import { formatTime, snippet } from '../lib/format.js';
 import { pickIcebreaker } from '../lib/icebreakers.js';
 import { local } from '../lib/storage.js';
+import { BlindDatePanel } from './BlindDatePanel.jsx';
 import { callSupported, useVoiceCall } from '../lib/useVoiceCall.js';
 import { Icon } from './Icon.jsx';
 import { ConfirmDialog, Modal } from './Modal.jsx';
@@ -902,7 +903,7 @@ function CallBar({ call, onAccept }) {
 
 export function Chat({ state, actions, settings, onOpenSettings }) {
   const { room, messages, partnerTyping, phase, ended, ratings, conn } = state;
-  const partnerName = PARTNER_NAME;
+  const partnerName = room?.blind?.partnerProfile?.name || PARTNER_NAME;
   const cooldownMs = useCountdown(state.cooldownUntil);
   const partnerOnline = Boolean(room?.partner.online);
   const [replyTo, setReplyTo] = useState(null);
@@ -915,9 +916,11 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
   const inputRef = useRef(null);
   const jumpRef = useRef({});
   const chatting = phase === 'chatting';
+  const canFriend = chatting && (!room?.blind || room.blind.stage === 'connect');
+  const canCall = chatting && (!room?.blind || ['voice', 'reveal', 'connect'].includes(room.blind.stage));
   const call = useVoiceCall({
     roomId: room?.roomId,
-    chatting,
+    chatting: canCall,
     partnerOnline,
     signal: actions.callSignal,
     onSignal: actions.onCallSignal,
@@ -1060,7 +1063,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
           </div>
         </div>
         <div className="head-actions">
-          {chatting && (
+          {canFriend && (
             <button
               type="button"
               className={`icon-btn friend-btn ${befriended ? 'is-done' : friend.mine ? 'is-pending' : ''} ${friend.partnerOffered && !befriended ? 'has-request' : ''}`}
@@ -1071,7 +1074,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
               <Icon name={befriended ? 'heartHand' : 'userPlus'} size={20} />
             </button>
           )}
-          {chatting && callSupported() && (
+          {canCall && callSupported() && (
             <button
               type="button"
               className="icon-btn call-btn"
@@ -1092,7 +1095,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
           )}
           <Menu
             items={[
-              { label: 'Найз болох', icon: 'userPlus', onClick: () => setDialog('friend'), hidden: !chatting || befriended || Boolean(friend.mine) },
+              { label: 'Найз болох', icon: 'userPlus', onClick: () => setDialog('friend'), hidden: !canFriend || befriended || Boolean(friend.mine) },
               { label: 'Мэдээлэх', icon: 'flag', onClick: () => setDialog('report'), hidden: !chatting && !endedPartnerSide },
               { label: 'Блоклох', icon: 'block', onClick: () => setDialog('block'), danger: true, hidden: !chatting && !endedPartnerSide },
               { label: 'Чат дуусгах', icon: 'logout', onClick: () => setDialog('leave'), hidden: !chatting },
@@ -1104,6 +1107,12 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         </div>
       </header>
 
+      {chatting && <div className="safety-bar" aria-label="Чатын аюулгүй байдал">
+        <button type="button" onClick={() => setDialog('leave')}>Гарах</button>
+        <button type="button" onClick={() => setDialog('block')}>Блоклох</button>
+        <button type="button" onClick={() => setDialog('report')}>Мэдээлэх</button>
+      </div>}
+      {chatting && room?.blind && <BlindDatePanel key={room.roomId} blind={room.blind} actions={actions} online={conn === 'online'} onCall={callSupported() ? startCall : null} callBusy={callBusy} onFriend={() => setDialog('friend')} />}
       <CallBar call={call} onAccept={acceptCall} />
       <audio ref={call.audioRef} autoPlay playsInline />
 
@@ -1199,7 +1208,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
             onCancelReply={() => setReplyTo(null)}
             onJumpReply={() => replyTo && jumpRef.current.jumpTo?.(replyTo.id)}
             inputRef={inputRef}
-            disabled={false}
+            disabled={conn !== 'online'}
             partnerOnline={partnerOnline}
             cooldownMs={cooldownMs}
           />
@@ -1224,7 +1233,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
       <ConfirmDialog
         open={dialog === 'leave'}
         title="Чатыг дуусгах уу?"
-        body="Чат дуусч, бүх мессеж арилна. Дараа нь шинэ хүн хайх боломжтой."
+        body="Чат дуусч, серверийн түр өгөгдөл устна. Шинэ чат эхлүүлэх эсвэл нүүр рүү буцахад энэ дэлгэцийн мессежүүд арилна."
         confirmLabel="Дуусгах"
         tone="primary"
         onConfirm={actions.leave}

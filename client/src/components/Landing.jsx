@@ -38,10 +38,13 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
   if (!profile.gender) missing.push('хүйсээ сонгоно уу');
   if (!profile.adultConfirmed) missing.push('18+ болон дүрмийг баталгаажуулна уу');
   const online = conn === 'online';
+  const blind = profile.mode === 'blind';
+  const event = stats.blindDate;
+  const dateClosed = blind && !event?.open;
 
   const handleStart = () => {
     setTried(true);
-    if (missing.length || !online) return;
+    if (missing.length || !online || dateClosed) return;
     onStart();
   };
 
@@ -71,12 +74,25 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
             Нууц хэн <span className="grad-text">нэгэнтэй</span>
           </h1>
           <p className="hero-sub">
-            Эсрэг хүйсийн санамсаргүй хүнтэй бодит цагт текстээр чатла. Мессеж хаана ч хадгалагддаггүй.
+            Эхлээд яриагаар танилц. Дараагийн алхмыг хоёулаа шийд. Нэргүй чат, орой бүрийн blind date.
           </p>
-          <WallLink onClick={onOpenWall} />
+
         </section>
 
         <section className="card setup-card" aria-label="Чат эхлүүлэх тохиргоо">
+          <div className="mode-grid" role="group" aria-label="Танилцах горим">
+            <button type="button" className={`mode-card ${!blind ? 'is-active' : ''}`} aria-pressed={!blind} onClick={() => onProfile({ ...profile, mode: 'chat' })}>
+              <span>💬 Энгийн чат</span><small>Хэзээ ч · Нэргүй яриа</small>
+            </button>
+            <button type="button" className={`mode-card ${blind ? 'is-active' : ''}`} aria-pressed={blind} onClick={() => onProfile({ ...profile, mode: 'blind' })}>
+              <span>💘 Blind date</span><small>20:00–04:00 · УБ цаг</small>
+            </button>
+          </div>
+          {blind && <div className="date-intro">
+            <strong>{event?.open ? 'Өнөө оройн болзоо нээлттэй' : 'Орой бүр 20:00-д уулзацгаая'}</strong>
+            <p>Асуулт → текст → дуу → нэр/зураг → сошиал. Хугацааны шахалтгүй, шат бүрд хоёр талын зөвшөөрөлтэй. Үнэгүй.</p>
+            <small>04:00-д шинэ хүн хайх хаагдана. Эхэлсэн яриагаа үргэлжлүүлж болно.</small>
+          </div>}
           <div className="field">
             <div className="field-label">
               <span className="step">1</span> Би бол
@@ -103,6 +119,8 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
             </p>
           </div>
 
+          <details className="setup-details">
+            <summary>Тааруулах тохиргоо <span>Сонирхол · Сургууль · Заавал биш</span></summary>
           <div className="field">
             <div className="field-label">
               <span className="step">2</span> Сонирхол <span className="optional">заавал биш</span>
@@ -159,6 +177,9 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
             <p className="hint">Нэг сургуулийн (ШУТИС бол нэг салбарын) хүнийг хамгийн түрүүнд хайна. Сургууль тань зөвхөн ижил байвал л нөгөө хүнд харагдана.</p>
           </div>
 
+          </details>
+          <details className="setup-details rules-details">
+            <summary>Харилцааны дүрэм <span>Хүндэтгэлтэй · Дарамтгүй · 18+</span></summary>
           <div className="rules-box">
             <div className="rules-head">
               <span className="badge-18">18+</span>
@@ -170,6 +191,8 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
               ))}
             </ul>
           </div>
+
+          </details>
 
           <label className={`check ${tried && !profile.adultConfirmed ? 'is-invalid' : ''}`}>
             <input
@@ -185,8 +208,8 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
             </span>
           </label>
 
-          <button type="button" className="btn primary lg block start-btn" onClick={handleStart} disabled={!online}>
-            {online ? 'Чат эхлүүлэх' : 'Сервертэй холбогдож байна…'}
+          <button type="button" className="btn primary lg block start-btn" onClick={handleStart} disabled={!online || dateClosed}>
+            {!online ? 'Сервертэй холбогдож байна…' : dateClosed ? 'Blind date 20:00-д нээгдэнэ' : blind ? 'Болзооны хүн хайх' : 'Чат эхлүүлэх'}
           </button>
           {tried && missing.length > 0 && (
             <p className="form-error" role="alert">
@@ -195,12 +218,19 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
           )}
         </section>
 
+        <details className="privacy-details">
+          <summary>Чатын нууцлал хэрхэн ажилладаг вэ?</summary>
+          <p>Хүргэсэн мессежийн түүхийг серверт байнга хадгалахгүй. Холболт түр тасарвал хүргэгдээгүй мессежийг серверийн санах ойд түр барьж, буцаж холбогдоход хүргэнэ. Чат дуусахад серверийн түр өгөгдөл устна; дэлгэц дээрх яриа шинэ чат эхлүүлэх эсвэл нүүр рүү буцахад арилна.</p>
+          <p>Репортод шалтгаан, цаг, ярианы хугацаа, таних тэмдгийн hash бүртгэнэ. Ярианы бичвэр, нэр, зураг хавсаргахгүй тул модератор мессежийн агуулгыг уншиж шалгахгүй. Давтамжийн хязгаарлалтад IP-ийн hash ашиглана.</p>
+          <p>Blind date-ийн нэр/зураг зөвхөн хоёр тал тус тус илгээсэн үед харагдана. Сошиал хаяг тусдаа хоёр талын зөвшөөрөлтэй. Эдгээр нь өрөөний санах ойд түр байна. Хүлээн авсан хүн хуулж эсвэл screenshot хийж болно. Нууц ханын нийтлэл нь чатаас тусдаа, нийтэд харагддаг.</p>
+          <p>Болзооны туршилтад хайлт, таарсан хос, харилцан зөвшөөрсөн шат, дахин таарсан сессийн нийт тоог сервер ассан хугацаанд тоолно. Мессежийн агуулгыг хэмжилтэд ашиглахгүй.</p>
+        </details>
         <ul className="trust-row">
           <li>
             <Icon name="lock" size={16} /> Бүртгэл, утас, байршил шаардахгүй
           </li>
           <li>
-            <Icon name="trash" size={16} /> Чат дуусахад мессеж устна
+            <Icon name="trash" size={16} /> Серверт байнгын чатын түүхгүй
           </li>
           <li>
             <Icon name="shield" size={16} /> Блоклох, мэдээлэх боломжтой

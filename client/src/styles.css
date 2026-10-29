@@ -3427,6 +3427,7 @@ code {
 .wall-notify:disabled {
   opacity: 0.6;
   cursor: progress;
+}
 /* ---------- Дууны дуудлага ---------- */
 .call-btn:disabled {
   opacity: 0.4;
@@ -3496,3 +3497,49 @@ code {
     animation: none;
   }
 }
+
+/* Compact entry and consent-based blind dates */
+.mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
+.mode-card { padding: 16px 12px; text-align: left; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface); color: var(--text); cursor: pointer; }
+.mode-card span { display: block; font-weight: 750; margin-bottom: 6px; }
+.mode-card small { color: var(--text-2); font-size: 11px; }
+.mode-card.is-active { border-color: var(--accent); background: rgba(var(--accent-rgb), .1); box-shadow: 0 0 0 1px var(--accent); }
+.date-intro { padding: 16px; margin-bottom: 20px; border-radius: 14px; background: rgba(var(--accent-rgb), .08); border: 1px solid var(--border); }
+.date-intro p { margin: 8px 0; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+.date-intro small { color: var(--muted); line-height: 1.5; }
+.setup-details { border-top: 1px solid var(--border); margin-top: 12px; }
+.setup-details summary, .privacy-details summary { padding: 15px 0; cursor: pointer; font-size: 13px; font-weight: 650; }
+.setup-details summary span { display: block; color: var(--muted); font-size: 11px; margin: 5px 0 0 16px; font-weight: 400; }
+.setup-details[open] > .field { margin-top: 16px; }
+.rules-details { margin-bottom: 16px; }
+.rules-details .rules-box { margin-top: 0; }
+.privacy-details { width: 100%; max-width: 600px; color: var(--text-2); }
+.privacy-details p { font-size: 12px; line-height: 1.7; margin: 0 0 12px; }
+.safety-bar { flex-shrink: 0; display: flex; justify-content: flex-end; gap: 6px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
+.safety-bar button { color: var(--text-2); background: transparent; padding: 8px 10px; border: 0; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.safety-bar button:hover { background: var(--surface-2); color: var(--text); }
+.date-panel { flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--border-strong); }
+.date-steps { display: flex; justify-content: space-between; gap: 6px; margin: 0; padding: 10px 16px 6px; list-style: none; }
+.date-steps li { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.date-steps li span { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--surface-3); }
+.date-steps li.is-active { color: var(--text); }
+.date-steps li.is-active span { background: var(--accent); color: var(--on-accent); }
+.date-content summary { padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 650; }
+.date-content summary small { float: right; font-size: 10px; color: var(--muted); font-weight: 400; }
+.date-body { max-height: 30dvh; overflow-y: auto; padding: 0 16px 12px; }
+.date-body p { font-size: 12px; line-height: 1.6; color: var(--text-2); margin: 0 0 10px; }
+.date-body blockquote { margin: 8px 0 12px; border-left: 2px solid var(--accent); padding-left: 12px; font-size: 14px; }
+.date-next { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 10px; }
+.date-next small, .date-profile-form small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.date-profile-form { display: grid; gap: 10px; max-width: 400px; }
+.date-profile-form label { font-size: 12px; display: grid; gap: 6px; }
+.date-photo-pick input { max-width: 100%; font-size: 11px; }
+.date-photo-preview, .date-revealed { display: flex; gap: 12px; align-items: center; margin: 10px 0; font-size: 13px; }
+.date-photo-preview img, .date-revealed img { width: 64px; height: 64px; object-fit: cover; border-radius: 12px; }
+.date-profile-wait { font-size: 12px; line-height: 1.6; display: grid; gap: 8px; }
+.date-metrics { margin-bottom: 20px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.date-metrics dl { display: flex; flex-wrap: wrap; gap: 20px; margin: 14px 0; }
+.date-metrics dt { font-size: 11px; color: var(--muted); }
+.date-metrics dd { font-size: 24px; font-weight: 700; margin: 5px 0 0; }
+.date-metrics p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+@media (max-width: 420px) { .date-steps { padding-inline: 10px; gap: 4px; } .date-steps li { font-size: 9px; gap: 3px; } .date-content summary small { float: none; margin-left: 8px; } }

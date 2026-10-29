@@ -81,7 +81,7 @@ export function createApp(overrides = {}) {
       origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),
       methods: ['GET', 'POST'],
     },
-    maxHttpBufferSize: 16 * 1024,
+    maxHttpBufferSize: 160 * 1024,
     pingInterval: 10000,
     pingTimeout: 8000,
   });
@@ -107,6 +107,11 @@ export function createApp(overrides = {}) {
   app.use('/api/admin/confessions', confessions.admin);
 
   // Админ: мэдээллийн жагсаалт (ADMIN_TOKEN тохируулсан үед л)
+  app.get('/api/admin/chat-stats', (req, res) => {
+    if (!adminAuth.isAuthorized(req)) return res.sendStatus(404);
+    res.json({ dateMetrics: chat.stats().dateMetrics });
+  });
+
   app.get('/api/admin/reports', (req, res) => {
     if (!adminAuth.isAuthorized(req)) {
       return res.sendStatus(404);
@@ -144,9 +149,10 @@ export function createApp(overrides = {}) {
       });
     },
     async close() {
-      chat.close();
       await confessions.close();
       await new Promise((resolve) => io.close(() => resolve()));
+      // Disconnect handlers create grace timers; clear them after sockets close.
+      chat.close();
     },
   };
 }
