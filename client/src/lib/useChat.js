@@ -604,19 +604,14 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     actions: {
       startSearch,
       cancelSearch,
+      dateAction: async (event, payload = {}) => {
+        const room = stateRef.current.room;
+        const res = await request(`date:${event}`, { ...payload, roomId: room?.roomId, round: room?.blind?.round });
+        if (!res.ok) toast(errorText(res.error));
+        return res;
+      },
       broadenSearch: async () => {
         const res = await request('queue:broaden');
-        if (!res.ok) toast(errorText(res.error));
-        return res;
-      },
-      advanceDate: async (ready) => {
-        const room = stateRef.current.room;
-        const res = await request('date:advance', { roomId: room?.roomId, stage: room?.blind?.stage, ready });
-        if (!res.ok) toast(errorText(res.error));
-        return res;
-      },
-      shareDateProfile: async (profile) => {
-        const res = await request('date:profile', { ...profile, roomId: stateRef.current.room?.roomId });
         if (!res.ok) toast(errorText(res.error));
         return res;
       },

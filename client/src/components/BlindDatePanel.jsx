@@ -1,96 +1,42 @@
 import { useState } from 'react';
-
-const STAGES = [
-  { id: 'icebreaker', label: 'Асуулт', next: 'Текст чат руу', hint: 'Доорх асуултаар яриагаа эхлүүлээрэй. Бэлэн болох үедээ дараагийн шатыг сонго.' },
-  { id: 'text', label: 'Текст', next: 'Дуут ярианы шат руу', hint: 'Нэр, зураггүйгээр танилцаарай. Дуугаар ярилцах боломжийг хоёулаа зөвшөөрч нээнэ.' },
-  { id: 'voice', label: 'Дуу', next: 'Нэр/зургийн шат руу', hint: 'Хүсвэл дуугаар ярь. Заавал залгахгүйгээр хоёулаа дараагийн шат руу шилжиж болно.' },
-  { id: 'reveal', label: 'Нэр/зураг', next: 'Сошиалын шат руу', hint: 'Нэр/зураг илгээх нь заавал биш. Хоёулаа тус тус илгээсэн үед л харилцан харагдана.' },
-  { id: 'connect', label: 'Сошиал', hint: 'Та хоёр бүх шатыг зөвшөөрлөө. Найз болох хүсэлтээр сошиал хаягаа тусдаа зөвшөөрч солилцоорой.' },
-];
-
-// Re-encode pixels to JPEG: bounded dimensions/size, no original EXIF metadata.
-async function preparePhoto(file) {
-  if (!file || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-    throw new Error('10 MB-аас жижиг JPG, PNG эсвэл WebP зураг сонгоно уу.');
-  }
-  const bitmap = await createImageBitmap(file);
-  try {
-    const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    for (const quality of [0.8, 0.6, 0.4, 0.2]) {
-      const data = canvas.toDataURL('image/jpeg', quality);
-      if (data.length <= 120000) return data;
-    }
-    throw new Error('Зураг хэт том байна. Өөр зураг сонгоно уу.');
-  } finally { bitmap.close(); }
-}
-
-export function BlindDatePanel({ blind, actions, online, onCall, callBusy, onFriend }) {
+const stages = ['questions', 'facts', 'flags', 'free'];
+const titles = ['Асуулт', '5 факт', 'Green / red flag', 'Чөлөөт чат'];
+const flagLabels = ['Миний green flag', 'Миний red flag', 'Ямар хүн сонирхдог вэ?', 'Ямар хүн сонирхдоггүй вэ?'];
+const who = g => g === 'male' ? 'Эрэгтэй' : 'Эмэгтэй';
+function Fields({ labels, onSubmit, disabled }) {
+  const [values, setValues] = useState(labels.map(() => ''));
   const [busy, setBusy] = useState(false);
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const [name, setName] = useState(blind.mine?.name || '');
-  const [photo, setPhoto] = useState(blind.mine?.photo || null);
-  const [error, setError] = useState('');
-  const index = STAGES.findIndex(s => s.id === blind.stage);
-  const step = STAGES[index] || STAGES[0];
-  const run = async (fn) => {
-    if (busy) return;
-    setBusy(true);
-    try { await fn(); } finally { setBusy(false); }
-  };
-  const pickPhoto = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError(''); setPhotoBusy(true);
-    try { setPhoto(await preparePhoto(file)); }
-    catch (err) { setError(err.message || 'Зургийг уншиж чадсангүй.'); }
-    finally { setPhotoBusy(false); e.target.value = ''; }
-  };
-  return (
-    <section className="date-panel" aria-label="Blind date-ийн үе шат">
-      <ol className="date-steps">
-        {STAGES.map((s, i) => <li key={s.id} className={i <= index ? 'is-active' : ''} aria-current={i === index ? 'step' : undefined}><span>{i < index ? '✓' : i + 1}</span>{s.label}</li>)}
-      </ol>
-      <details className="date-content" key={blind.stage} open>
-        <summary>💘 {index + 1}/5 · {step.label}<small>Хугацааны хязгааргүй</small></summary>
-        <div className="date-body">
-          <p>{step.hint}</p>
-          {blind.stage === 'icebreaker' && <blockquote>{blind.question}</blockquote>}
-          {blind.stage === 'voice' && (onCall
-            ? <button type="button" className="btn sm ghost" disabled={!online || callBusy} onClick={onCall}>Дуугаар ярих</button>
-            : <p className="hint">Энэ хөтөч дуудлага дэмжихгүй байна. Текстээр үргэлжлүүлж болно.</p>)}
-          {blind.stage === 'reveal' && !blind.partnerProfile && (
-            blind.profileOffered ? <div className="date-profile-wait" role="status">
-              Нэр/зургаа илгээсэн. Нөгөө хүн бас илгээх хүртэл нууц байна.
-              <button type="button" className="link-btn" disabled={!online || busy} onClick={() => run(() => actions.shareDateProfile({ cancel: true }))}>Илгээснээ цуцлах</button>
-            </div> : <form className="date-profile-form" onSubmit={e => { e.preventDefault(); run(() => actions.shareDateProfile({ name, photo })); }}>
-              <label>Харуулах нэр<input className="input" value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="Нэр эсвэл хоч" required /></label>
-              <label className="date-photo-pick">Зураг · заавал биш<input type="file" accept="image/jpeg,image/png,image/webp" disabled={photoBusy} onChange={pickPhoto} /></label>
-              {photoBusy && <small role="status">Зургийг бэлдэж байна…</small>}
-              {photo && <div className="date-photo-preview"><img src={photo} alt="Илгээх зургийн урьдчилсан харагдац" /><button type="button" className="link-btn" onClick={() => setPhoto(null)}>Зургийг хасах</button></div>}
-              {error && <p className="form-error" role="alert">{error}</p>}
-              <small>Зөвхөн хоёулаа илгээвэл харилцан харагдана. Нөгөө хүн зураг хуулж авч болно.</small>
-              <button type="submit" className="btn sm primary" disabled={!online || busy || photoBusy || !name.trim()}>Нэр/зургаа зөвшөөрч илгээх</button>
-            </form>
-          )}
-          {blind.partnerProfile && <div className="date-revealed">
-            {blind.partnerProfile.photo && <img src={blind.partnerProfile.photo} alt={`${blind.partnerProfile.name}-ийн зөвшөөрч хуваалцсан зураг`} />}
-            <span>Танилцсандаа таатай байна, <strong>{blind.partnerProfile.name}</strong>!</span>
-          </div>}
-          {index < STAGES.length - 1 ? <div className="date-next">
-            <button type="button" className={`btn sm ${blind.ready ? 'ghost' : 'primary'}`} disabled={!online || busy} onClick={() => run(() => actions.advanceDate(!blind.ready))}>
-              {blind.ready ? 'Зөвшөөрлөө буцаах' : step.next}
-            </button>
-            <small role="status">{blind.ready ? 'Таны сонголт нууц. Хоёулаа зөвшөөрвөл шилжинэ.' : 'Хоёулаа зөвшөөрвөл дараагийн шат нээгдэнэ.'}</small>
-          </div> : <button type="button" className="btn sm primary" disabled={!online} onClick={onFriend}>Найз болох</button>}
-        </div>
+  return <form className="date-profile-form" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await onSubmit(values); } finally { setBusy(false); } }}>
+    {labels.map((label, i) => <label key={label}>{label}<textarea className="input" required maxLength={500} value={values[i]} onChange={e => setValues(v => v.map((x,j) => j === i ? e.target.value : x))} /></label>)}
+    <button className="btn primary sm" disabled={disabled || busy || values.some(v => !v.trim())}>Хариултаа илгээх</button>
+    <small>Илгээмэгц нөгөө хүнд харагдана. Хоёулаа илгээсний дараа автоматаар үргэлжилнэ.</small>
+  </form>;
+}
+export function BlindDatePanel({ blind: d, actions, online }) {
+  const index = stages.indexOf(d.stage);
+  const turn = d.round % 2 === 0 ? 'male' : 'female';
+  const q = d.rounds[d.round];
+  const [busy, setBusy] = useState(false);
+  const act = async (event, payload) => { setBusy(true); try { return await actions.dateAction(event, payload); } finally { setBusy(false); } };
+  const answers = (values, labels) => ['male','female'].map(g => values[g] && <div className="date-answer" key={g}><strong>{who(g)}{g === d.me ? ' · Та' : ''}</strong>{values[g].map((v,i) => <p key={i}><b>{labels[i]}:</b> {v}</p>)}</div>);
+  return <section className={`date-panel guided-date ${d.stage === 'free' ? 'is-free' : ''}`} aria-label="Blind date-ийн үе шат">
+    <ol className="date-steps">{titles.map((title,i) => <li className={i <= index ? 'is-active' : ''} aria-current={i === index ? 'step' : undefined} key={title}><span>{i+1}</span>{title}</li>)}</ol>
+    <div className="guided-body">
+      <h2>{titles[index]}</h2>
+      {d.stage === 'questions' && <>
+        <p>{d.round+1}/4 · {who(turn)}н {Math.floor(d.round/2)+1}-р асуулт</p>
+        {!q ? turn === d.me ? <div className="question-choices"><p>Хоёулаа хариулах асуултаа сонго:</p>{d.choices.map((text,i) => !d.rounds.some(r => r.question === text) && <button className="btn ghost" key={text} disabled={!online || busy} onClick={() => act('question', { question: i })}>{text}</button>)}</div> : <p role="status">Нөгөө хүн асуултаа сонгож байна…</p> : <>
+          <blockquote>{q.question}</blockquote>
+          {!q.answers[d.me] ? <Fields key={`round-${d.round}`} labels={['Таны хариулт']} disabled={!online} onSubmit={v => act('answer', { answer: v[0] })} /> : <p role="status">Хариултаа илгээлээ. Нөгөө хүнийг хүлээж байна…</p>}
+        </>}
+      </>}
+      {['facts','flags'].includes(d.stage) && (!d[d.stage][d.me] ? <Fields key={d.stage} labels={d.stage === 'facts' ? [1,2,3,4,5].map(n => `Миний тухай факт ${n}`) : flagLabels} disabled={!online} onSubmit={values => act(d.stage, { values })} /> : <p role="status">Таны хариулт харагдаж байна. Нөгөө хүний хариултыг хүлээж байна…</p>)}
+      {d.stage === 'free' && <div><p>Одоо хүссэнээрээ ярилцаарай. Доорх чатын талбарыг ашиглана.</p><button className="btn primary sm" disabled={!online || busy} onClick={() => act('finish', { ready: !d.finish[d.me] })}>{d.finish[d.me] ? 'Дуусгах хүсэлтээ буцаах' : 'Болзоог дуусгах'}</button><p role="status">{d.finish.male || d.finish.female ? 'Дуусгах хүсэлт ирсэн. Хоёулаа дарвал болзоо дуусна.' : 'Хоёулаа дуусгахыг зөвшөөрөх хүртэл чат үргэлжилнэ.'}</p></div>}
+      <details className="date-history" open={d.stage !== 'free'}><summary>Хоёулангийн хариултууд</summary>
+        {d.rounds.map((r,i) => <article key={i}><h3>{i+1}. {r.question}</h3>{answers(Object.fromEntries(Object.entries(r.answers).map(([g,v]) => [g,[v]])), ['Хариулт'])}</article>)}
+        {answers(d.facts, [1,2,3,4,5].map(n => `Факт ${n}`))}
+        {answers(d.flags, flagLabels)}
       </details>
-    </section>
-  );
+    </div>
+  </section>;
 }

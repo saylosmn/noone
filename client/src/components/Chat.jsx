@@ -916,8 +916,8 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
   const inputRef = useRef(null);
   const jumpRef = useRef({});
   const chatting = phase === 'chatting';
-  const canFriend = chatting && (!room?.blind || room.blind.stage === 'connect');
-  const canCall = chatting && (!room?.blind || ['voice', 'reveal', 'connect'].includes(room.blind.stage));
+  const canFriend = chatting && (!room?.blind || room.blind.stage === 'free');
+  const canCall = chatting && (!room?.blind || room.blind.stage === 'free');
   const call = useVoiceCall({
     roomId: room?.roomId,
     chatting: canCall,
@@ -1149,7 +1149,7 @@ export function Chat({ state, actions, settings, onOpenSettings }) {
         footer={endPanel}
       />
 
-      {chatting && (
+      {chatting && (!room?.blind || room.blind.stage === 'free') && (
         <div className="chat-bottom">
           {!befriended && friend.mine && (
             <div className="friend-bar is-waiting">
