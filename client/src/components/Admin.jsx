@@ -28,7 +28,7 @@ function DateMetrics({ token }) {
   return <section className="date-metrics" aria-label="Blind date-ийн үзүүлэлт">
     <strong>💘 Blind date · Туршилтын үзүүлэлт</strong>
     {error ? <p role="status">Үзүүлэлт татаж чадсангүй. 30 секундийн дараа дахин оролдоно.</p> : !metrics ? <p>Ачаалж байна…</p> : <>
-      <dl>{[['joins', 'Хайлтууд'], ['matches', 'Таарсан хос'], ['mutualSteps', 'Харилцан зөвшөөрсөн шат'], ['completed', 'Сошиалын шатанд хүрсэн хос'], ['returningSessions', 'Дахин таарсан сесс']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{metrics[key]}</dd></div>)}</dl>
+      <dl>{[['joins', 'Хайлтууд'], ['matches', 'Таарсан хос'], ['mutualSteps', 'Харилцан зөвшөөрсөн шат'], ['completed', 'Харилцан дуусгасан болзоо'], ['returningSessions', 'Дахин таарсан сесс']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{metrics[key]}</dd></div>)}</dl>
       <p>{new Date(metrics.since).toLocaleString('mn-MN', { timeZone: 'Asia/Ulaanbaatar' })} (УБ)-с хойших тоо. Сервер дахин асахад тэглэгдэнэ. Дахин таарсан сесс = нэг түр сесс хоёр дахь болзоондоо таарсан; өөр өдөр эргэн ирсэн хүний тоо биш.</p>
     </>}
   </section>;

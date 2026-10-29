@@ -11,7 +11,7 @@ import {
   sharedSchool as getSharedSchool,
   STICKERS,
 } from './constants.js';
-import { blindDateWindow, BLIND_STAGES, DATE_QUESTIONS, sanitizeDateProfile } from './blindDate.js';
+import { blindDateWindow, DATE_QUESTIONS } from './blindDate.js';
 import { maskProfanity } from './profanity.js';
 import { isValidSubscription } from './push.js';
 
@@ -207,14 +207,9 @@ export function attachChat(io, { config, push, reports }) {
 
   function describeDate(room, client) {
     if (!room.blind) return null;
-    const partnerId = room.a === client.id ? room.b : room.a;
-    const bothProfiles = Boolean(room.blind.profiles[room.a] && room.blind.profiles[room.b]);
-    return { stage: room.blind.stage, question: room.blind.question,
-      ready: Boolean(room.blind.ready[client.id]),
-      profileOffered: Boolean(room.blind.profiles[client.id]),
-      mine: room.blind.profiles[client.id] || null,
-      partnerProfile: bothProfiles ? room.blind.profiles[partnerId] : null };
+    return { ...room.blind, me: client.gender, choices: DATE_QUESTIONS };
   }
+
   function emitDate(room) {
     for (const id of [room.a, room.b]) {
       const c = clients.get(id);
@@ -286,7 +281,7 @@ export function attachChat(io, { config, push, reports }) {
       friend: {}, // clientId -> { platform, handle } — чат дуусахад устна
       friendRevealed: false,
       mode: a.mode,
-      blind: a.mode === 'blind' ? { stage: 'icebreaker', ready: {}, profiles: {}, question: DATE_QUESTIONS[Math.floor(Math.random() * DATE_QUESTIONS.length)] } : null,
+      blind: a.mode === 'blind' ? { stage: 'questions', round: 0, rounds: [], facts: {}, flags: {}, finish: {} } : null,
     };
     rooms.set(room.id, room);
     if (room.blind) {
@@ -343,7 +338,7 @@ export function attachChat(io, { config, push, reports }) {
       emitTo(other, 'chat:typing', { typing: false });
       emitTo(other, 'chat:ended', {
         roomId: room.id,
-        reason: reason === 'disconnected' ? 'partner_disconnected' : 'partner_left',
+        reason: reason === 'mutual' ? 'date_completed' : reason === 'disconnected' ? 'partner_disconnected' : 'partner_left',
       });
     }
   }
@@ -539,36 +534,61 @@ export function attachChat(io, { config, push, reports }) {
       return { ok: true };
     });
 
-    on('date:advance', (c, payload) => {
+    const dateRoom = (c, payload, stage) => {
       const room = roomOf(c);
-      if (!room?.blind || payload.roomId !== room.id || payload.stage !== room.blind.stage) return { ok: false, error: 'date_stale' };
-      if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
-      const index = BLIND_STAGES.indexOf(room.blind.stage);
-      if (index >= BLIND_STAGES.length - 1) return { ok: false, error: 'not_allowed' };
-      room.blind.ready[c.id] = payload.ready === true;
-      if (room.blind.ready[room.a] && room.blind.ready[room.b]) {
-        room.blind.stage = BLIND_STAGES[index + 1];
-        room.blind.ready = {};
-        dateMetrics.mutualSteps++;
-        if (room.blind.stage === 'connect') dateMetrics.completed++;
+      return room?.blind && payload.roomId === room.id && room.blind.stage === stage ? room : null;
+    };
+    const cleanAnswer = (value) => {
+      const result = sanitizeText(value, 500);
+      return result.error ? null : maskProfanity(result.text).text;
+    };
+    on('date:question', (c, p) => {
+      const room = dateRoom(c, p, 'questions');
+      if (!room || p.round !== room.blind.round) return { ok: false, error: 'date_stale' };
+      const d = room.blind;
+      if (c.gender !== (d.round % 2 === 0 ? 'male' : 'female') || d.rounds[d.round]) return { ok: false, error: 'not_allowed' };
+      if (!Number.isInteger(p.question) || !DATE_QUESTIONS[p.question] || d.rounds.some(q => q.question === DATE_QUESTIONS[p.question])) return { ok: false, error: 'invalid' };
+      d.rounds.push({ question: DATE_QUESTIONS[p.question], by: c.gender, answers: {} });
+      emitDate(room);
+      return { ok: true };
+    });
+    on('date:answer', (c, p) => {
+      const room = dateRoom(c, p, 'questions');
+      if (!room || p.round !== room.blind.round) return { ok: false, error: 'date_stale' };
+      const d = room.blind, q = d.rounds[d.round];
+      const answer = cleanAnswer(p.answer);
+      if (!q || q.answers[c.gender] || !answer) return { ok: false, error: 'invalid' };
+      q.answers[c.gender] = answer;
+      if (q.answers.male && q.answers.female) {
+        d.round++;
+        if (d.round === 4) { d.stage = 'facts'; dateMetrics.mutualSteps++; }
       }
       emitDate(room);
       return { ok: true };
     });
-
-    on('date:profile', (c, payload) => {
-      const room = roomOf(c);
-      if (!room?.blind || payload.roomId !== room.id || room.blind.stage !== 'reveal') return { ok: false, error: 'date_stale' };
-      if (!limits.misc.take(c.id).ok) return { ok: false, error: 'rate_limited' };
-      const both = room.blind.profiles[room.a] && room.blind.profiles[room.b];
-      if (both) return { ok: false, error: 'already_revealed' };
-      if (payload.cancel === true) delete room.blind.profiles[c.id];
-      else {
-        const profile = sanitizeDateProfile(payload);
-        if (!profile) return { ok: false, error: 'invalid_profile' };
-        room.blind.profiles[c.id] = profile;
-      }
-      emitDate(room);
+    for (const [stage, count, next] of [['facts', 5, 'flags'], ['flags', 4, 'free']]) {
+      on(`date:${stage}`, (c, p) => {
+        const room = dateRoom(c, p, stage);
+        if (!room) return { ok: false, error: 'date_stale' };
+        const values = Array.isArray(p.values) ? p.values.map(cleanAnswer) : [];
+        if (values.length !== count || values.some(v => !v) || room.blind[stage][c.gender]) return { ok: false, error: 'invalid' };
+        room.blind[stage][c.gender] = values;
+        if (room.blind[stage].male && room.blind[stage].female) {
+          room.blind.stage = next; dateMetrics.mutualSteps++;
+        }
+        emitDate(room);
+        return { ok: true };
+      });
+    }
+    on('date:finish', (c, p) => {
+      const room = dateRoom(c, p, 'free');
+      if (!room) return { ok: false, error: 'date_stale' };
+      room.blind.finish[c.gender] = p.ready === true;
+      if (room.blind.finish.male && room.blind.finish.female) {
+        dateMetrics.completed++;
+        endRoom(room, c, 'mutual');
+        emitTo(c, 'chat:ended', { roomId: room.id, reason: 'date_completed' });
+      } else emitDate(room);
       return { ok: true };
     });
 
@@ -579,6 +599,7 @@ export function attachChat(io, { config, push, reports }) {
 
     on('chat:message', (c, payload) => {
       const room = roomOf(c);
+      if (room?.blind && room.blind.stage !== 'free') return { ok: false, error: 'date_locked' };
       if (!room) return { ok: false, error: 'not_in_chat' };
       const lim = limits.message.take(c.id);
       if (!lim.ok) return { ok: false, error: 'rate_limited', retryAfterMs: lim.retryAfterMs };
@@ -680,7 +701,7 @@ export function attachChat(io, { config, push, reports }) {
     on('friend:offer', (c, payload) => {
       const room = roomOf(c);
       if (!room) return { ok: false, error: 'not_in_chat' };
-      if (room.blind && room.blind.stage !== 'connect') return { ok: false, error: 'date_locked' };
+      if (room.blind && room.blind.stage !== 'free') return { ok: false, error: 'date_locked' };
       if (room.friendRevealed) return { ok: false, error: 'already_revealed' };
       if (!CONTACT_PLATFORMS.includes(payload.platform)) return { ok: false, error: 'invalid_platform' };
       const handle = typeof payload.handle === 'string' ? payload.handle.trim().replace(/\s+/g, ' ') : '';
@@ -712,7 +733,7 @@ export function attachChat(io, { config, push, reports }) {
     on('call:signal', (c, payload) => {
       const room = roomOf(c);
       if (!room) return { ok: false, error: 'not_in_chat' };
-      if (room.blind && !['voice', 'reveal', 'connect'].includes(room.blind.stage)) return { ok: false, error: 'date_locked' };
+      if (room.blind && room.blind.stage !== 'free') return { ok: false, error: 'date_locked' };
       const msg = sanitizeCallSignal(payload);
       if (!msg) return { ok: false, error: 'invalid' };
       if (!limits.callSignal.take(c.id).ok) return { ok: false, error: 'rate_limited' };

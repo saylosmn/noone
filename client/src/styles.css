@@ -3543,3 +3543,16 @@ code {
 .date-metrics dd { font-size: 24px; font-weight: 700; margin: 5px 0 0; }
 .date-metrics p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 @media (max-width: 420px) { .date-steps { padding-inline: 10px; gap: 4px; } .date-steps li { font-size: 9px; gap: 3px; } .date-content summary small { float: none; margin-left: 8px; } }
+.guided-date:not(.is-free) { flex: 1; min-height: 0; overflow-y: auto; }
+.guided-date:not(.is-free) ~ .message-area { display: none; }
+.guided-body { padding: 12px 18px; }
+.guided-body h2 { font-size: 18px; margin: 0 0 10px; }
+.guided-body p { font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.guided-body textarea { min-height: 72px; resize: vertical; }
+.question-choices { display: grid; gap: 8px; }
+.question-choices button { white-space: normal; text-align: left; }
+.date-history { margin-top: 20px; }
+.date-history summary { cursor: pointer; }
+.date-history h3 { font-size: 14px; line-height: 1.6; }
+.date-answer { border-left: 2px solid var(--accent); padding: 8px 12px; margin: 12px 0; background: var(--surface-2); border-radius: 8px; }
+.guided-date.is-free .guided-body { max-height: 32dvh; overflow-y: auto; }
