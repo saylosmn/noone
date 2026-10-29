@@ -1,3 +1,4 @@
+import { VelaraCinematicHero } from './components/VelaraCinematicHero.jsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from './lib/useChat.js';
 import { useSettings } from './lib/useSettings.js';
@@ -273,6 +274,7 @@ export default function App() {
         </div>
       )}
       {screen}
+      {route.view === 'home' && state.phase === 'idle' && <VelaraCinematicHero />}
       <Toasts toasts={toasts} onDismiss={dismissToast} />
       <SettingsModal
         open={settingsOpen}
