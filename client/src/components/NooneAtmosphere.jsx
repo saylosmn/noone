@@ -1,14 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
-import './VelaraCinematicHero.css';
-
-export function VelaraCinematicHero() {
+import { animate, stagger } from 'animejs';
+import './NooneAtmosphere.css';
+export function NooneAtmosphere() {
   const containerRef = useRef(null), canvasRef = useRef(null), videoRef = useRef(null);
-  const reduced = useReducedMotion();
+  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [paused, setPaused] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const still = reduced || paused;
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (reduced) return;
+    const landing = containerRef.current?.parentElement;
+    const animation = animate(landing.querySelectorAll('.hero > *, .setup-card'), {
+      opacity: [0, 1], translateY: [22, 0], duration: 950, delay: stagger(110), ease: 'out(3)',
+    });
+    return () => animation.revert();
+  }, [reduced]);
   useEffect(() => {
     const container = containerRef.current, canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -58,25 +70,10 @@ export function VelaraCinematicHero() {
     window.addEventListener('mousemove',move,{passive:true}); document.addEventListener('visibilitychange',sync);
     return () => { cancelAnimationFrame(frame); resize.disconnect(); observer.disconnect(); window.removeEventListener('mousemove',move); document.removeEventListener('visibilitychange',sync); videoRef.current?.pause(); };
   }, [still]);
-  const enter = () => { const setup = document.querySelector('.setup-card'); setup?.scrollIntoView({behavior:reduced?'instant':'smooth',block:'center'}); setup?.querySelector('button')?.focus({preventScroll:true}); };
-  const fade = delay => ({ initial: reduced ? false : {opacity:0,y:30}, whileInView:{opacity:1,y:0}, viewport:{once:true,amount:.3}, transition:{delay:reduced?0:delay,duration:reduced?0:1,ease:'easeOut'} });
-  return <section className="velara-cinematic" aria-label="Velara AI — Create better content with AI in minutes">
-    <div className="velara-scene" ref={containerRef}>
-      {!videoFailed && <video ref={videoRef} className="velara-video" autoPlay={!still} muted loop playsInline preload="none" onError={() => setVideoFailed(true)} aria-hidden="true" src="https://cdn.jiro.build/Velara/rounded%20video.mp4" />}
-      <canvas ref={canvasRef} className="velara-canvas" aria-hidden="true" />
-      <nav className="velara-nav" aria-label="Velara navigation">
-        <a className="velara-pill velara-logo" href="#velara-headline"><span className="velara-mark" aria-hidden="true">✦</span> VELARA AI</a>
-        <div className="velara-pill velara-links"><a href="#velara-headline">Features</a><a href="#velara-description">Solutions</a><a href="#velara-cta">Pricing</a><a href="#velara-headline">Company</a></div>
-        <div className="velara-pill velara-account"><button className="velara-login" onClick={enter}>Log In</button><button className="velara-start" onClick={enter}>Get Started</button></div>
-      </nav>
-      <div className="velara-orbit" aria-hidden="true" />
-      <div className="velara-content"><div className="velara-copy">
-        <motion.h2 id="velara-headline" {...fade(.2)}>Create better content<br />with AI in minutes</motion.h2>
-        <motion.p id="velara-description" {...fade(.4)}>Take control of your money with smarter insights. Track spending, manage subscriptions, and reach your financial goals effortlessly.</motion.p>
-        <motion.div className="velara-cta-row" {...fade(.6)}><button id="velara-cta" className="velara-cta" onClick={enter}>Try It Free <ArrowRight size={20} aria-hidden="true" /></button></motion.div>
-      </div></div>
-      <div className="velara-horizon" aria-hidden="true" />
-      <button className="velara-motion" aria-pressed={paused} onClick={() => setPaused(v => !v)}>{paused ? 'Resume motion' : 'Pause motion'}</button>
-    </div>
-  </section>;
+  return <div className="noone-atmosphere" ref={containerRef}>
+    {!videoFailed && <video ref={videoRef} autoPlay={!still} muted loop playsInline preload="none" onError={() => setVideoFailed(true)} aria-hidden="true" src="https://cdn.jiro.build/Velara/rounded%20video.mp4" />}
+    <canvas ref={canvasRef} aria-hidden="true" />
+    <div className="noone-atmosphere-shade" aria-hidden="true" />
+    <button type="button" className="noone-motion-toggle" aria-pressed={paused} onClick={() => setPaused(v => !v)}>{paused ? 'Эффект асаах' : 'Эффект түр зогсоох'}</button>
+  </div>;
 }

@@ -1,3 +1,4 @@
+import { NooneAtmosphere } from './NooneAtmosphere.jsx';
 import { useState } from 'react';
 import { GENDERS, INTERESTS, MUST_SCHOOLS, RULES, SCHOOLS } from '../lib/constants.js';
 import { Icon, Logo } from './Icon.jsx';
@@ -49,7 +50,8 @@ export function Landing({ profile, onProfile, stats, conn, onStart, onOpenSettin
   };
 
   return (
-    <div className="screen landing">
+    <div className="screen landing noone-cinematic">
+      <NooneAtmosphere />
       <header className="topbar">
         <Logo />
         <div className="topbar-right">
