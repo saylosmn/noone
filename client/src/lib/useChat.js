@@ -36,6 +36,8 @@ function matchNote(room) {
 const toRoom = (r) => ({
   roomId: r.roomId,
   startedAt: r.startedAt,
+  mode: r.mode || 'chat',
+  blind: r.blind || null,
   sharedInterests: r.sharedInterests || [],
   sharedSchool: r.sharedSchool || null,
   partner: { nickname: PARTNER_NAME, online: r.partner?.online !== false },
@@ -87,7 +89,7 @@ function reducer(state, a) {
         friend: a.friend || EMPTY_FRIEND,
         messages: a.keepMessages
           ? [...state.messages, sys('Холболт сэргэлээ. Чат үргэлжилж байна.')]
-          : [sys('Чат сэргэлээ. Өмнөх мессежүүд хаана ч хадгалагддаггүй тул харагдахгүй.')],
+          : [sys('Чат сэргэлээ. Өмнө хүргэсэн мессежийн түүх серверт хадгалагддаггүй тул харагдахгүй.')],
       };
     case 'ended':
       if (state.phase !== 'chatting') return state;
@@ -134,6 +136,9 @@ function reducer(state, a) {
         friend: { ...state.friend, ...a.patch },
         messages: a.note ? [...state.messages, a.note] : state.messages,
       };
+    case 'date':
+      return state.phase === 'chatting' && state.room?.roomId === a.roomId
+        ? { ...state, room: { ...state.room, blind: a.blind } } : state;
     case 'typing':
       return { ...state, partnerTyping: a.typing };
     case 'partner_status':
@@ -216,9 +221,10 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
         gender: profile.gender,
         interests: profile.interests,
         school: profile.school || null,
-        adultConfirmed: true,
+        adultConfirmed: profile.adultConfirmed === true,
+        mode: profile.mode || 'chat',
       });
-      if (!res.ok && stateRef.current.phase === 'searching') {
+      if (!res.ok) {
         toast(errorText(res.error));
         dispatch({ type: 'idle' });
       }
@@ -267,6 +273,11 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
       dispatch({ type: 'replaced' });
     });
 
+    socket.on('date:state', (s) => dispatch({ type: 'date', ...s }));
+    socket.on('queue:closed', () => {
+      dispatch({ type: 'idle' });
+      toast(errorText('date_closed'));
+    });
     socket.on('stats', (stats) => dispatch({ type: 'stats', stats }));
     socket.on('queue:status', (s) => dispatch({ type: 'search_status', phase: s.phase, since: s.since }));
 
@@ -593,6 +604,22 @@ export function useChat({ profileRef, onIncoming, onMatch, onToast, onSession })
     actions: {
       startSearch,
       cancelSearch,
+      broadenSearch: async () => {
+        const res = await request('queue:broaden');
+        if (!res.ok) toast(errorText(res.error));
+        return res;
+      },
+      advanceDate: async (ready) => {
+        const room = stateRef.current.room;
+        const res = await request('date:advance', { roomId: room?.roomId, stage: room?.blind?.stage, ready });
+        if (!res.ok) toast(errorText(res.error));
+        return res;
+      },
+      shareDateProfile: async (profile) => {
+        const res = await request('date:profile', { ...profile, roomId: stateRef.current.room?.roomId });
+        if (!res.ok) toast(errorText(res.error));
+        return res;
+      },
       next,
       sendMessage,
       takeSendToken,
