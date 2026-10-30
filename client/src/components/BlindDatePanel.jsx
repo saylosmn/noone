@@ -16,11 +16,21 @@ function Fields({ labels, onSubmit, disabled }) {
   </form>;
 }
 function AnswerPair({ values, labels, me }) {
+  const other = me === 'male' ? 'female' : 'male';
+  const [selected, setSelected] = useState(null);
+  const active = selected || (values[other] ? other : me);
   if (!Object.keys(values).length) return null;
-  return <div className="guided-answer-pair">{[me, me === 'male' ? 'female' : 'male'].map(g => <article className={`guided-person ${g === me ? 'is-mine' : ''}`} key={g}>
-    <header><span className="guided-person-dot" />{g === me ? 'Таны хариулт' : 'Нууц нэгний хариулт'}<small>{values[g] ? 'Илгээсэн' : 'Хүлээж байна'}</small></header>
-    {values[g] ? <dl>{values[g].map((value,i) => <div key={i}>{labels.length > 1 && <dt>{labels[i]}</dt>}<dd>{value}</dd></div>)}</dl> : <p className="guided-wait">Хариултаа бичиж байна…</p>}
-  </article>)}</div>;
+  return <div className="guided-responses">
+    <div className="guided-response-switch" role="group" aria-label="Хэний хариултыг харах вэ?">
+      {[me, other].map(g => <button type="button" key={g} aria-pressed={active === g} onClick={() => setSelected(g)}>
+        <span>{g === me ? 'Миний хариулт' : 'Нууц нэгэн'}</span><small>{values[g] ? '✓ Илгээсэн' : 'Хүлээж байна'}</small>
+      </button>)}
+    </div>
+    <div className="guided-answer-pair">{[me, other].map(g => <article className={`guided-person ${g === me ? 'is-mine' : ''} ${active === g ? 'is-selected' : ''}`} key={g}>
+      <header><span className="guided-person-dot" />{g === me ? 'Таны хариулт' : 'Нууц нэгний хариулт'}<small>{values[g] ? 'Илгээсэн' : 'Хүлээж байна'}</small></header>
+      {values[g] ? <dl>{values[g].map((value,i) => <div key={i}>{labels.length > 1 && <dt>{labels[i]}</dt>}<dd>{value}</dd></div>)}</dl> : <p className="guided-wait">Хариулт хараахан илгээгээгүй байна.</p>}
+    </article>)}</div>
+  </div>;
 }
 const roundValues = q => Object.fromEntries(Object.entries(q.answers).map(([g,v]) => [g,[v]]));
 export function BlindDatePanel({ blind: d, actions, online }) {
