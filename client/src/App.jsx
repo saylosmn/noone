@@ -1,3 +1,4 @@
+import { FriendsInbox } from './components/FriendsInbox.jsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from './lib/useChat.js';
 import { useSettings } from './lib/useSettings.js';
@@ -273,6 +274,7 @@ export default function App() {
         </div>
       )}
       {screen}
+      {state.phase !== 'chatting' && route.view !== 'admin' && <FriendsInbox />}
       <Toasts toasts={toasts} onDismiss={dismissToast} />
       <SettingsModal
         open={settingsOpen}

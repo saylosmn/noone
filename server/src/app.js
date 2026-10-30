@@ -1,3 +1,4 @@
+import { createFriends } from './friends.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -86,7 +87,9 @@ export function createApp(overrides = {}) {
     pingTimeout: 8000,
   });
 
-  const chat = attachChat(io, { config, push, reports });
+  const friends = createFriends(createKv({ upstashUrl: config.confessions.upstashUrl, upstashToken: config.confessions.upstashToken, file: config.friendsFile || process.env.FRIENDS_FILE }));
+  app.use('/api/friends', friends.router);
+  const chat = attachChat(io, { config, push, reports, friends });
 
   app.get('/api/health', (req, res) => {
     const s = chat.stats();

@@ -1,3 +1,4 @@
+import { friendIdentity } from './friends.js';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { KeyedLimiter } from './limiter.js';
 import {
@@ -67,7 +68,7 @@ export function sanitizeText(input, maxLength) {
  * Хослуулах дараалал, өрөө, мессеж дамжуулалт.
  * Мессежийн агуулгыг ХАДГАЛАХГҮЙ — зөвхөн нөгөө хүн рүү дамжуулна.
  */
-export function attachChat(io, { config, push, reports }) {
+export function attachChat(io, { config, push, reports, friends }) {
   const clients = new Map(); // clientId -> client
   const rooms = new Map(); // roomId -> room
   const queues = { male: new Set(), female: new Set() };
@@ -444,6 +445,7 @@ export function attachChat(io, { config, push, reports }) {
     client.awayTimer = null;
     const wasAwayNotified = client.awayNotified;
     client.awayNotified = false;
+    client.friendId = friendIdentity(auth.friendToken);
     client.socketId = socket.id;
     client.visible = true;
     client.ipHash = socket.data.ipHash;
@@ -487,12 +489,12 @@ export function attachChat(io, { config, push, reports }) {
 
     /** Event handler-ийг алдаанаас хамгаалж, ack-г заавал дуудна. */
     const on = (event, handler) => {
-      socket.on(event, (...args) => {
+      socket.on(event, async (...args) => {
         const ack = typeof args[args.length - 1] === 'function' ? args.pop() : () => {};
         const c = current();
         if (!c || c.socketId !== socket.id) return ack({ ok: false, error: 'no_session' });
         try {
-          const result = handler(c, args[0] ?? {});
+          const result = await handler(c, args[0] ?? {});
           ack(result ?? { ok: true });
         } catch (err) {
           console.error(`[socket] ${event} алдаа:`, err.message);
@@ -698,7 +700,7 @@ export function attachChat(io, { config, push, reports }) {
       return { ok: true };
     });
 
-    on('friend:offer', (c, payload) => {
+    on('friend:offer', async (c, payload) => {
       const room = roomOf(c);
       if (!room) return { ok: false, error: 'not_in_chat' };
       if (room.blind && room.blind.stage !== 'free') return { ok: false, error: 'date_locked' };
@@ -712,6 +714,16 @@ export function attachChat(io, { config, push, reports }) {
       room.friend[c.id] = { platform: payload.platform, handle };
       const partnerOffer = partner ? room.friend[partner.id] : null;
       if (partnerOffer) {
+        if (c.friendId || partner?.friendId) {
+          if (room.friendSaving) return { ok:false, error:'rate_limited' };
+          room.friendSaving = true;
+          try {
+            if (!friends?.enabled) return { ok:false,error:'friends_unavailable' };
+            await friends.save(c.friendId, partner?.friendId, room.friend[c.id], partnerOffer);
+          } catch { return {ok:false,error:'friends_storage'}; }
+          finally { room.friendSaving = false; }
+          if (!rooms.has(room.id)) return {ok:false,error:'not_in_chat'};
+        }
         room.friendRevealed = true;
         emitTo(partner, 'friend:reveal', { contact: room.friend[c.id] });
         return { ok: true, status: 'revealed', contact: partnerOffer };

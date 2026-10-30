@@ -18,6 +18,14 @@ export const identity = {
   clear: () => idStore.remove(IDENTITY_KEY),
 };
 
+export function friendToken() {
+  let token = local.get('noone.friendToken', null);
+  if (!/^[a-f0-9]{64}$/.test(token || '')) {
+    token = [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    local.set('noone.friendToken', token);
+  }
+  return token;
+}
 export function createSocket() {
   return io(SERVER_URL || undefined, {
     autoConnect: false,
@@ -26,7 +34,7 @@ export function createSocket() {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 20000,
-    auth: (cb) => cb(identity.read() || {}),
+    auth: (cb) => cb({ ...(identity.read() || {}), friendToken: friendToken() }),
   });
 }
 
